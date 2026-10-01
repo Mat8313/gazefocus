@@ -23,6 +23,7 @@ MODEL_PATH = DATA_DIR / "face_landmarker.task"
 # (coin gauche, coin droit, centre de l'iris) de chaque œil, dans l'image.
 EYES = ((33, 133, 468), (362, 263, 473))
 BLACK_FRAMES_LIMIT = 30
+MAX_FACES = 3
 # Gain du filtre par axe, adapté à l'unité de chacun : yaw et pitch en degrés,
 # décalages d'iris en fraction de largeur d'œil, position de la tête en cm.
 FILTER_BETA = (0.05, 0.05, 3.0, 3.0, 0.2, 0.2, 0.2)
@@ -40,6 +41,15 @@ def ensure_model():
         urllib.request.urlretrieve(MODEL_URL, tmp)
         tmp.replace(MODEL_PATH)
     return MODEL_PATH
+
+
+def nearest_face(matrices) -> int:
+    """Indice du visage le plus proche de la caméra : c'est l'utilisateur.
+
+    Quelqu'un qui passe derrière ou regarde par-dessus l'épaule est plus loin.
+    La caméra regarde vers les z négatifs : le plus proche a le z le plus grand.
+    """
+    return max(range(len(matrices)), key=lambda i: matrices[i][2][3])
 
 
 def _eye_offsets(landmarks):
@@ -78,7 +88,7 @@ class HeadTracker:
         options = vision.FaceLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(ensure_model())),
             running_mode=vision.RunningMode.VIDEO,
-            num_faces=1,
+            num_faces=MAX_FACES,
             output_facial_transformation_matrixes=True,
         )
         self.landmarker = vision.FaceLandmarker.create_from_options(options)
@@ -118,14 +128,15 @@ class HeadTracker:
             self._filter.reset()
             return None
 
-        m = result.facial_transformation_matrixes[0]
+        face = nearest_face(result.facial_transformation_matrixes)
+        m = result.facial_transformation_matrixes[face]
         # La 3e colonne de la rotation est la direction vers laquelle le visage
         # pointe ; la 4e colonne est la position de la tête.
         fx, fy, fz = m[0][2], m[1][2], m[2][2]
         raw = (
             math.degrees(math.atan2(fx, fz)),
             math.degrees(math.asin(max(-1.0, min(1.0, -fy)))),
-            *_eye_offsets(result.face_landmarks[0]),
+            *_eye_offsets(result.face_landmarks[face]),
             m[0][3], m[1][3], m[2][3],
         )
         return tuple(float(x) for x in self._filter(raw, now))

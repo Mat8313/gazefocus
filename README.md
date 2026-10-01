@@ -2,87 +2,84 @@
 
 [![Tests](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml/badge.svg)](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml)
 
-[![Démonstration de gazefocus](docs/demo.gif)](docs/demo.mp4)
+[![gazefocus demo](docs/demo.gif)](docs/demo.mp4)
 
-*Clique sur l'animation pour la vidéo avec le son (23 secondes).*
+*Click the animation for the video with sound (23 seconds, captions in French).*
 
-*Keyboard focus follows the screen you look at, on Windows. The app runs in the
-notification area, works fully offline from your webcam, and its interface is in
-English or French depending on your Windows language. The rest of this page is
-in French.*
+**English** · [Français](README.fr.md)
 
-Le focus clavier suit l'écran que tu regardes, sous Windows. Tourne la tête vers
-ton autre moniteur et tape : la dernière fenêtre utilisée sur cet écran a déjà
-le focus, sans clic.
+Keyboard focus follows the screen you look at, on Windows. Turn towards your
+other monitor and type: the last window you used on that screen already has
+focus, no click needed.
 
-L'application reste en arrière-plan, avec une icône dans la zone de
-notification.
+The app runs in the background, with an icon in the notification area. Its
+interface is in English or French, depending on your Windows language.
 
-Tout tourne en local : la webcam est analysée en mémoire avec MediaPipe, aucune
-image n'est enregistrée ni envoyée. La seule requête réseau est le
-téléchargement du modèle de visage (environ 4 Mo) au premier lancement.
+Everything runs locally: the webcam is analysed in memory with MediaPipe, and no
+image is ever saved or sent. The only network request is the download of the
+face model (about 4 MB) on first launch.
 
-## Installation
+## Install
 
-Depuis la page [Releases](https://github.com/Mat8313/gazefocus/releases), au
-choix :
+From the [Releases](https://github.com/Mat8313/gazefocus/releases) page, pick
+one:
 
-- `gazefocus-setup.exe` : installeur sans droits administrateur, avec raccourci
-  dans le menu Démarrer et désinstallation propre (à partir de la version 0.4.0) ;
-- `gazefocus-windows.zip` : à décompresser où tu veux, puis lancer
-  `gazefocus.exe`.
+- `gazefocus-setup.exe`: installer that needs no administrator rights, adds a
+  Start menu shortcut and uninstalls cleanly;
+- `gazefocus-windows.zip`: unzip anywhere, then run `gazefocus.exe`.
 
-Aucun Python à installer. Il faut Windows 10/11 en 64 bits, une webcam et au
-moins deux écrans.
+No Python needed. Requires 64-bit Windows 10/11, a webcam and at least two
+screens.
 
-Comme l'exe n'est pas signé, Windows SmartScreen peut afficher un
-avertissement au premier lancement : « Informations complémentaires », puis
-« Exécuter quand même ».
+The executable is not signed, so Windows SmartScreen may show a warning on first
+launch: "More info", then "Run anyway".
 
-## Utilisation
+## Usage
 
-Au premier lancement, la calibration démarre toute seule, en deux étapes :
+On first launch, calibration starts by itself, in two steps:
 
-1. Assis comme d'habitude : sur chaque écran, appuie sur Espace puis suis des
-   yeux le point qui longe les bords et traverse le milieu, pendant 14 secondes.
-2. Recule ta chaise d'environ 25 cm et recommence. Cette étape apprend à l'app
-   comment la distance change les angles ; la touche S permet de la passer.
+1. Sitting as usual: on each screen, press Space, then follow with your eyes the
+   dot that runs along the edges and through the middle, for 14 seconds.
+2. Move your chair back about 25 cm (10 in) and do it again. This step teaches
+   the app how distance changes the angles; press S to skip it.
 
-Chaque disposition d'écrans (portable seul, portable + écran externe...) garde
-sa propre calibration, reprise automatiquement quand tu rebranches.
+Each screen layout (laptop alone, laptop plus external monitor...) keeps its own
+calibration, picked up automatically when you plug back in.
 
-Menu de l'icône (clic droit) :
+Icon menu (right click):
 
-- **Pause / Reprendre** : aussi par clic gauche sur l'icône ou `Ctrl+Alt+G`.
-  En pause, la caméra est libérée.
-- **Calibrer les écrans** : à refaire si tu déplaces un écran ou la webcam.
-- **Réglages…** : voir ci-dessous.
-- **Lancer au démarrage de Windows** : disponible dans la version `.exe`.
-- **Quitter**
+- **Pause / Resume**: also by left-clicking the icon or with `Ctrl+Alt+G`.
+  While paused, the camera is released.
+- **Calibrate screens**: redo it if you move a screen or the webcam.
+- **Settings…**: see below.
+- **Start with Windows**: available in the `.exe` version.
+- **Open the log**: errors and state changes, useful when reporting a bug. No
+  window title or application name is ever written to it.
+- **Quit**
 
-Couleur de l'iris : vert actif, gris en pause, bleu en calibration, orange
-calibration à refaire ou caméra indisponible, rouge erreur.
+Iris colour: green active, grey paused, blue calibrating, orange calibration
+needed or camera unavailable, red error.
 
-### Réglages
+### Settings
 
-| Réglage | Défaut | Effet |
+| Setting | Default | Effect |
 | --- | --- | --- |
-| Caméra | 0 | Index de la webcam à utiliser |
-| Temps de fixation | 0,3 s | Durée à regarder un écran avant la bascule |
-| Focus après une frappe | 3 s | Pas de bascule tant que tu tapes |
-| Focus après la souris | 1,5 s | La souris garde la main |
-| Affiner à chaque clic | oui | Chaque clic sert d'échantillon de calibration |
-| Amener le curseur | non | Le pointeur va sur la fenêtre qui reçoit le focus |
-| Tenir compte des yeux | oui | Ajoute la position des iris ; recalibrer après un changement |
-| Fenêtres d'un même écran | non | Expérimental : bascule entre fenêtres voisines |
-| Entourer la fenêtre regardée | non | Contour vert si elle a le focus, orange si la bascule est en attente |
-| Applications exclues | aucune | Le focus ne bouge jamais seul devant ces apps (ex. `vlc.exe`) |
+| Camera | 0 | Index of the webcam to use |
+| Dwell time | 0.3 s | How long you look at a screen before focus moves |
+| Keep focus after a keystroke | 3 s | Focus never moves while you type |
+| Keep focus after mouse use | 1.5 s | The mouse stays in charge |
+| Refine with every click | on | Each click becomes a calibration sample |
+| Move the pointer | off | The pointer goes to the window that gets focus |
+| Use the eyes | on | Adds iris position; recalibrate after changing this |
+| Windows on the same screen | off | Experimental: switch between neighbouring windows |
+| Outline the looked-at window | off | Green if it has focus, orange if the switch is pending |
+| Excluded apps | none | Focus never moves on its own in front of these (e.g. `vlc.exe`) |
 
-Les réglages sont dans `%APPDATA%\gazefocus\config.json`.
+Settings are stored in `%APPDATA%\gazefocus\config.json`.
 
-## Lancer depuis les sources
+## Run from source
 
-Python 3.10 ou plus.
+Python 3.10 or later.
 
 ```
 python -m venv .venv
@@ -91,59 +88,59 @@ pip install -r requirements.txt
 python -m gazefocus
 ```
 
-## Construire l'exe
+## Build the exe
 
 ```
 pip install pyinstaller
 .\build.ps1
 ```
 
-Le résultat est le dossier `dist\gazefocus` (environ 210 Mo, surtout OpenCV et
-MediaPipe). Pour l'installeur, avec [Inno Setup](https://jrsoftware.org/isinfo.php) :
+The result is the `dist\gazefocus` folder (about 210 MB, mostly OpenCV and
+MediaPipe). For the installer, with [Inno Setup](https://jrsoftware.org/isinfo.php):
 
 ```
-iscc /DAppVersion=0.4.0 installer.iss
+iscc /DAppVersion=0.5.0 installer.iss
 ```
 
-Sur GitHub, pousser un tag `vX.Y.Z` construit le zip et l'installeur et les
-attache à la release (`.github/workflows/release.yml`).
+On GitHub, pushing a `vX.Y.Z` tag builds the zip and the installer and attaches
+them to the release (`.github/workflows/release.yml`).
 
-## Comment ça marche
+## How it works
 
-1. `tracker.py` : MediaPipe estime l'orientation et la position de la tête,
-   ainsi que le décalage des iris dans les yeux. Un filtre « One Euro »
-   (`smoothing.py`) lisse le tout : fort au repos, léger en mouvement.
-2. `gaze.py` : chaque écran a des échantillons « pose -> position ». Une
-   régression ridge par écran en tire le point regardé ; l'écran choisi est
-   celui dans lequel ce point tombe, avec une marge en faveur de l'écran actuel
-   pour éviter le ping-pong. Le poids des yeux par rapport à la tête est donc
-   appris pour chaque personne. Des termes « angle × distance » compensent le
-   recul ou l'avancée de la chaise.
-3. `calibration.py` fournit les échantillons de départ (environ 150 par
-   écran) ; ensuite chaque clic en ajoute un, parce qu'on regarde là où on
-   clique. Les 200 derniers clics par écran sont gardés, les plus récents
-   pesant le plus.
-4. `decision.py` : la bascule n'a lieu qu'après un regard soutenu, jamais
-   pendant que tu tapes ou que tu utilises la souris.
-5. `winfocus.py` : la fenêtre la plus haute dans le z-order de l'écran visé
-   reçoit le focus via l'API Win32.
-6. `engine.py` fait tourner le tout dans un thread, `tray.py` gère l'icône,
-   `settings_ui.py` la fenêtre de réglages.
+1. `tracker.py`: MediaPipe estimates the orientation and position of the head
+   and the offset of the irises within the eyes. A One Euro filter
+   (`smoothing.py`) smooths it all: heavily at rest, lightly in motion.
+2. `gaze.py`: each screen has "pose -> position" samples. A ridge regression per
+   screen turns a pose into the point being looked at; the chosen screen is the
+   one that point falls in, with a margin favouring the current screen to avoid
+   flip-flopping. The weight of the eyes relative to the head is therefore
+   learned per person. "Angle × distance" terms compensate for moving the chair
+   back or forward.
+3. `calibration.py` provides the initial samples (about 150 per screen); after
+   that every click adds one, because you look where you click. The last 200
+   clicks per screen are kept, recent ones weighing more.
+4. `decision.py`: focus only moves after a sustained look, never while you type
+   or use the mouse.
+5. `winfocus.py`: the topmost window in the target screen's z-order gets focus
+   through the Win32 API.
+6. `brain.py` combines these decisions without ever calling Windows, which makes
+   it testable; `engine.py` observes (camera, windows, keyboard) and applies, in
+   a thread. `tray.py` handles the icon, `settings_ui.py` the settings window.
 
-L'app se met en veille quand la session est verrouillée ou qu'il n'y a qu'un
-seul écran, et réessaie toutes les 5 secondes si la caméra est indisponible.
-Elle traite 20 images par seconde quand ton regard bouge et 5 quand il est
-posé. Si l'erreur mesurée sur tes 20 derniers clics dépasse un quart d'écran,
-une notification te propose de recalibrer.
+The app idles when the session is locked or when there is a single screen, and
+retries every 5 seconds if the camera is unavailable. It processes 20 frames per
+second while your gaze moves and 5 when it rests. If the error measured on your
+last 20 clicks exceeds a quarter of a screen, a notification suggests
+recalibrating. When several faces are visible, the one nearest to the camera is
+tracked.
 
-## Limites
+## Limitations
 
-- Le suivi des yeux reste approximatif avec une webcam ordinaire : il dépend
-  de l'éclairage, et les lunettes à reflets le dégradent.
-- La bascule entre fenêtres d'un même écran demande une précision que la
-  webcam n'offre pas toujours ; elle convient à deux fenêtres côte à côte.
-- Les fenêtres lancées en administrateur ne peuvent pas recevoir le focus
-  depuis un processus normal.
+- Eye tracking stays approximate with an ordinary webcam: it depends on
+  lighting, and reflective glasses degrade it.
+- Switching between windows on the same screen needs a precision the webcam does
+  not always provide; it suits two windows side by side.
+- Windows started as administrator cannot receive focus from a normal process.
 
 ## Tests
 
@@ -152,6 +149,6 @@ pip install pytest
 python -m pytest
 ```
 
-## Licence
+## License
 
-MIT, voir [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

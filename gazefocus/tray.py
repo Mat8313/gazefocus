@@ -1,9 +1,12 @@
 """Icône de la zone de notification et son menu."""
+import os
+
 import pystray
 from PIL import Image, ImageDraw
 
 from . import autostart, engine as eng, settings_ui
 from .i18n import t
+from .log import LOG_PATH
 
 COLORS = {
     eng.ACTIVE: (80, 220, 120),
@@ -61,6 +64,9 @@ def run(config):
     def open_settings(icon, item):
         settings_ui.show(engine.config, engine.apply_config)
 
+    def open_log(icon, item):
+        os.startfile(LOG_PATH)
+
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
 
@@ -84,6 +90,7 @@ def run(config):
             checked=lambda item: autostart.enabled(),
             enabled=lambda item: autostart.available(),
         ),
+        pystray.MenuItem(t("Ouvrir le journal", "Open the log"), open_log),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(t("Quitter", "Quit"), quit_app),
     )
