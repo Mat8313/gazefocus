@@ -6,3 +6,4 @@ dist/
 *.task
 calibration.json
 config.json
+brag-output/

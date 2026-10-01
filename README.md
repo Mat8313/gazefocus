@@ -2,6 +2,10 @@
 
 [![Tests](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml/badge.svg)](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml)
 
+[![Démonstration de gazefocus](docs/demo.gif)](docs/demo.mp4)
+
+*Clique sur l'animation pour la vidéo avec le son (23 secondes).*
+
 *Keyboard focus follows the screen you look at, on Windows. The app runs in the
 notification area, works fully offline from your webcam, and its interface is in
 English or French depending on your Windows language. The rest of this page is
