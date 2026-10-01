@@ -6,14 +6,15 @@ import win32api
 import win32con
 import win32gui
 
-from . import calibration, winfocus
+from . import calibration, overlay, winfocus
 from .config import WINDOW_MIN_DWELL
+from .overlay import Overlay
 from .decision import SwitchDecider
 from .gaze import GazeModel
 from .tracker import HeadTracker
 
 HOTKEY_ID = 1
-FRAME_INTERVAL = 1 / 15
+FRAME_INTERVAL = 1 / 20     # compromis entre réactivité et charge processeur
 SLOW_CHECK_INTERVAL = 1.0   # écrans branchés, session verrouillée
 CAMERA_RETRY_INTERVAL = 5.0
 SAVE_EVERY = 20             # échantillons appris entre deux sauvegardes
@@ -23,16 +24,22 @@ ACTIVE, PAUSED, CALIBRATING, NEEDS_CALIBRATION, UNAVAILABLE, ERROR = (
 )
 
 
-def _hotkey_pressed() -> bool:
-    """Vide la file de messages du thread et signale un appui sur Ctrl+Alt+G."""
+def _pump_messages() -> bool:
+    """Traite les messages Windows du thread ; vrai si Ctrl+Alt+G a été pressé.
+
+    Le contour (overlay) est une vraie fenêtre : sans cette boucle, elle ne se
+    redessinerait jamais.
+    """
     pressed = False
     while True:
-        found, _ = win32gui.PeekMessage(
-            None, win32con.WM_HOTKEY, win32con.WM_HOTKEY, win32con.PM_REMOVE
-        )
+        found, message = win32gui.PeekMessage(None, 0, 0, win32con.PM_REMOVE)
         if not found:
             return pressed
-        pressed = True
+        if message[1] == win32con.WM_HOTKEY:
+            pressed = True
+        else:
+            win32gui.TranslateMessage(message)
+            win32gui.DispatchMessage(message)
 
 
 class Engine(threading.Thread):
@@ -73,6 +80,8 @@ class Engine(threading.Thread):
     # --- boucle ---
 
     def _set_state(self, state, detail=""):
+        if state != ACTIVE:
+            self.overlay.hide()
         if state != self.state:
             self.state = state
             self.on_state(state, detail)
@@ -96,11 +105,13 @@ class Engine(threading.Thread):
         winfocus.user32.RegisterHotKey(
             None, HOTKEY_ID, win32con.MOD_CONTROL | win32con.MOD_ALT, ord("G")
         )
+        self.overlay = Overlay()
         try:
             self._loop()
         except Exception as error:
             self._set_state(ERROR, f"{type(error).__name__}: {error}")
         finally:
+            self.overlay.close()
             winfocus.user32.UnregisterHotKey(None, HOTKEY_ID)
             self._close_tracker()
             if self._unsaved:
@@ -111,7 +122,7 @@ class Engine(threading.Thread):
         last_slow_check = retry_at = 0.0
         while not self._quit.is_set():
             started = time.monotonic()
-            if _hotkey_pressed():
+            if _pump_messages():
                 self.toggle_pause()
             if self._reload.is_set():
                 self._reload.clear()
@@ -179,20 +190,38 @@ class Engine(threading.Thread):
         if raw and inputs.clicked and config.learn_from_clicks:
             self._learn_from_click(raw)
 
-        switch_to = self.screen_decider.update(target, current, now, since_mouse, since_key)
-        window = None
-        if switch_to:
-            window = winfocus.top_window_on(switch_to)
-        elif config.same_screen and target and target == current:
-            window = self.window_decider.update(
-                self._window_looked_at(raw, target), foreground, now, since_mouse, since_key
-            )
-        else:
-            self.window_decider.update(None, foreground, now, since_mouse, since_key)
+        if foreground and winfocus.process_name(foreground) in config.excluded:
+            # App exclue au premier plan (jeu, visio...) : on ne touche à rien.
+            target = None
 
-        if window and winfocus.focus_window(window) and config.move_cursor:
-            winfocus.move_cursor_to(window)
-            inputs.sync_cursor()
+        # Fenêtre que l'app pense que tu regardes.
+        other_screen = bool(target) and target != current
+        if other_screen:
+            looked = winfocus.top_window_on(target)
+        elif target and config.same_screen:
+            looked = self._window_looked_at(raw, target)
+        else:
+            looked = foreground if target else None
+
+        switch_to = self.screen_decider.update(target, current, now, since_mouse, since_key)
+        same_screen_candidate = looked if config.same_screen and not other_screen else None
+        window = self.window_decider.update(
+            same_screen_candidate, foreground, now, since_mouse, since_key
+        )
+        if switch_to:
+            window = looked
+
+        if window and winfocus.focus_window(window):
+            foreground = window
+            if config.move_cursor:
+                winfocus.move_cursor_to(window)
+                inputs.sync_cursor()
+
+        if config.show_highlight and looked:
+            color = overlay.FOCUSED if looked == foreground else overlay.PENDING
+            self.overlay.show(winfocus.window_bounds(looked), color)
+        else:
+            self.overlay.hide()
 
     def _learn_from_click(self, raw):
         cursor = win32api.GetCursorPos()

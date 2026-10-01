@@ -1,5 +1,7 @@
 # gazefocus
 
+[![Tests](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml/badge.svg)](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml)
+
 Le focus clavier suit l'écran que tu regardes, sous Windows. Tourne la tête vers
 ton autre moniteur et tape : la dernière fenêtre utilisée sur cet écran a déjà
 le focus, sans clic.
@@ -13,10 +15,16 @@ téléchargement du modèle de visage (environ 4 Mo) au premier lancement.
 
 ## Installation
 
-Télécharge `gazefocus-windows.zip` depuis la page
-[Releases](https://github.com/Mat8313/gazefocus/releases), décompresse-le où tu
-veux et lance `gazefocus.exe`. Aucun Python à installer. Il faut Windows 10/11
-en 64 bits, une webcam et au moins deux écrans.
+Depuis la page [Releases](https://github.com/Mat8313/gazefocus/releases), au
+choix :
+
+- `gazefocus-setup.exe` : installeur sans droits administrateur, avec raccourci
+  dans le menu Démarrer et désinstallation propre (à partir de la version 0.4.0) ;
+- `gazefocus-windows.zip` : à décompresser où tu veux, puis lancer
+  `gazefocus.exe`.
+
+Aucun Python à installer. Il faut Windows 10/11 en 64 bits, une webcam et au
+moins deux écrans.
 
 Comme l'exe n'est pas signé, Windows SmartScreen peut afficher un
 avertissement au premier lancement : « Informations complémentaires », puis
@@ -52,6 +60,8 @@ calibration à refaire ou caméra indisponible, rouge erreur.
 | Amener le curseur | non | Le pointeur va sur la fenêtre qui reçoit le focus |
 | Tenir compte des yeux | oui | Ajoute la position des iris ; recalibrer après un changement |
 | Fenêtres d'un même écran | non | Expérimental : bascule entre fenêtres voisines |
+| Entourer la fenêtre regardée | non | Contour vert si elle a le focus, orange si la bascule est en attente |
+| Applications exclues | aucune | Le focus ne bouge jamais seul devant ces apps (ex. `vlc.exe`) |
 
 Les réglages sont dans `%APPDATA%\gazefocus\config.json`.
 
@@ -74,7 +84,14 @@ pip install pyinstaller
 ```
 
 Le résultat est le dossier `dist\gazefocus` (environ 210 Mo, surtout OpenCV et
-MediaPipe).
+MediaPipe). Pour l'installeur, avec [Inno Setup](https://jrsoftware.org/isinfo.php) :
+
+```
+iscc /DAppVersion=0.4.0 installer.iss
+```
+
+Sur GitHub, pousser un tag `vX.Y.Z` construit le zip et l'installeur et les
+attache à la release (`.github/workflows/release.yml`).
 
 ## Comment ça marche
 

@@ -16,6 +16,7 @@ DELAYS = (
 OPTIONS = (
     ("learn_from_clicks", "Affiner la calibration à chaque clic"),
     ("move_cursor", "Amener le curseur sur la fenêtre choisie"),
+    ("show_highlight", "Entourer la fenêtre regardée (vert : active, orange : en attente)"),
     ("use_eyes", "Tenir compte des yeux, pas seulement de la tête (recalibrer après un changement)"),
     ("same_screen", "Basculer aussi entre fenêtres d'un même écran (expérimental)"),
 )
@@ -49,15 +50,23 @@ def _run(current, on_save):
                         format="%.1f", textvariable=delays[name]).grid(row=row, column=1)
 
         options = {}
-        for row, (name, label) in enumerate(OPTIONS, len(DELAYS) + 1):
+        row = len(DELAYS) + 1
+        for name, label in OPTIONS:
             options[name] = tk.BooleanVar(value=getattr(current, name))
             ttk.Checkbutton(frame, text=label, variable=options[name]).grid(
                 row=row, column=0, columnspan=2, sticky="w", pady=2)
+            row += 1
+
+        excluded = tk.StringVar(value=", ".join(current.excluded))
+        ttk.Label(frame, text="Applications où le focus ne bouge jamais (ex. vlc.exe, teams.exe)").grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(10, 2))
+        ttk.Entry(frame, textvariable=excluded).grid(row=row + 1, column=0, columnspan=2, sticky="ew")
 
         def save():
             try:
                 new = Config(
                     camera=camera.get(),
+                    excluded=config_module.parse_excluded(excluded.get()),
                     **{name: max(0.0, var.get()) for name, var in delays.items()},
                     **{name: var.get() for name, var in options.items()},
                 )
@@ -68,8 +77,7 @@ def _run(current, on_save):
             root.destroy()
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=len(DELAYS) + len(OPTIONS) + 1, column=0, columnspan=2,
-                     sticky="e", pady=(12, 0))
+        buttons.grid(row=row + 2, column=0, columnspan=2, sticky="e", pady=(12, 0))
         ttk.Button(buttons, text="Annuler", command=root.destroy).grid(row=0, column=0, padx=4)
         ttk.Button(buttons, text="Enregistrer", command=save).grid(row=0, column=1)
         root.mainloop()

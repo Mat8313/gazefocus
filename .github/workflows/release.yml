@@ -1,0 +1,53 @@
+name: Release
+
+# Un tag vX.Y.Z construit le zip et l'installeur, puis les attache à la release.
+# Le lancement manuel construit les mêmes fichiers sans rien publier.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pytest pyinstaller
+      - run: python -m pytest -q
+
+      - name: Build exe
+        run: .\build.ps1
+
+      - name: Zip
+        run: Compress-Archive -Path dist\gazefocus -DestinationPath dist\gazefocus-windows.zip
+
+      - name: Build installer
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0' }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$version" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gazefocus
+          path: |
+            dist/gazefocus-windows.zip
+            dist/gazefocus-setup.exe
+
+      - name: Attach to release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --title "gazefocus $($env:GITHUB_REF_NAME.TrimStart('v'))" --generate-notes }
+          gh release upload $env:GITHUB_REF_NAME dist/gazefocus-windows.zip dist/gazefocus-setup.exe --clobber

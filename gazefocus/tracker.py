@@ -1,7 +1,11 @@
 """Webcam -> orientation et position de la tête, position des iris, via MediaPipe."""
 import math
+import os
 import time
 import urllib.request
+
+# Sans ça, l'ouverture d'une caméra par Media Foundation prend plusieurs secondes.
+os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
 
 import cv2
 import mediapipe as mp
@@ -55,13 +59,18 @@ class HeadTracker:
 
     def __init__(self, camera: int = 0):
         self.camera = camera
-        self.cap = cv2.VideoCapture(camera, cv2.CAP_DSHOW)
+        # Media Foundation d'abord : sur certaines webcams, DirectShow plafonne
+        # à 10 images/s là où Media Foundation en fournit 30.
+        self.cap = cv2.VideoCapture(camera, cv2.CAP_MSMF)
+        if not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(camera, cv2.CAP_DSHOW)
         if not self.cap.isOpened():
             raise CameraError(f"Impossible d'ouvrir la caméra {camera}")
         # En 720p, un iris couvre deux fois plus de pixels qu'en 480p. Si la
         # caméra ne le propose pas, elle garde sa résolution la plus proche.
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)
 
         vision = mp.tasks.vision
         options = vision.FaceLandmarkerOptions(

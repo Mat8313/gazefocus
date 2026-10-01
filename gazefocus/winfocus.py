@@ -1,5 +1,6 @@
 """Tout ce qui touche à Win32 : écrans, fenêtres, focus, activité souris/clavier."""
 import ctypes
+import os
 from ctypes import wintypes
 from dataclasses import dataclass
 
@@ -9,6 +10,13 @@ import win32gui
 import win32process
 
 user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+kernel32.OpenProcess.restype = wintypes.HANDLE
+kernel32.QueryFullProcessImageNameW.argtypes = (
+    wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)
+)
+kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+DWMWA_EXTENDED_FRAME_BOUNDS = 9
 DWMWA_CLOAKED = 14
 
 
@@ -136,8 +144,35 @@ def window_at(point, margin: float = 0.1):
     return root if inside else None
 
 
+def window_bounds(hwnd):
+    """Rectangle visible de la fenêtre, sans les bordures invisibles de Windows."""
+    rect = wintypes.RECT()
+    failed = ctypes.windll.dwmapi.DwmGetWindowAttribute(
+        wintypes.HWND(hwnd), DWMWA_EXTENDED_FRAME_BOUNDS, ctypes.byref(rect), ctypes.sizeof(rect)
+    )
+    if failed:
+        return win32gui.GetWindowRect(hwnd)
+    return rect.left, rect.top, rect.right, rect.bottom
+
+
+def process_name(hwnd) -> str:
+    """Nom de l'exécutable qui possède la fenêtre, en minuscules ("" si inconnu)."""
+    pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(len(buffer))
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return ""
+        return os.path.basename(buffer.value).lower()
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def move_cursor_to(hwnd):
-    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    left, top, right, bottom = window_bounds(hwnd)
     user32.SetCursorPos((left + right) // 2, (top + bottom) // 2)
 
 

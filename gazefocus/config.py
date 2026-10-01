@@ -1,7 +1,7 @@
 """Réglages utilisateur, sauvegardés dans %APPDATA%\\gazefocus\\config.json."""
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from .decision import Settings
@@ -22,9 +22,24 @@ class Config:
     move_cursor: bool = False
     use_eyes: bool = True
     same_screen: bool = False
+    show_highlight: bool = False
+    # Exécutables (en minuscules) devant lesquels le focus ne bouge jamais seul.
+    excluded: list = field(default_factory=list)
 
     def switching(self, min_dwell: float = 0.0) -> Settings:
         return Settings(max(self.dwell, min_dwell), self.mouse_cooldown, self.typing_cooldown)
+
+
+def parse_excluded(text: str) -> list:
+    """« VLC, teams.exe » -> ["vlc.exe", "teams.exe"]."""
+    names = []
+    for part in text.replace(";", ",").split(","):
+        name = part.strip().lower()
+        if name and not name.endswith(".exe"):
+            name += ".exe"
+        if name and name not in names:
+            names.append(name)
+    return names
 
 
 def load() -> Config:
