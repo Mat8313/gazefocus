@@ -11,6 +11,17 @@ Tout tourne en local : la webcam est analysée en mémoire avec MediaPipe, aucun
 image n'est enregistrée ni envoyée. La seule requête réseau est le
 téléchargement du modèle de visage (environ 4 Mo) au premier lancement.
 
+## Installation
+
+Télécharge `gazefocus-windows.zip` depuis la page
+[Releases](https://github.com/Mat8313/gazefocus/releases), décompresse-le où tu
+veux et lance `gazefocus.exe`. Aucun Python à installer. Il faut Windows 10/11
+en 64 bits, une webcam et au moins deux écrans.
+
+Comme l'exe n'est pas signé, Windows SmartScreen peut afficher un
+avertissement au premier lancement : « Informations complémentaires », puis
+« Exécuter quand même ».
+
 ## Utilisation
 
 Au premier lancement, la calibration démarre toute seule : un point s'affiche au
@@ -76,3 +87,7 @@ MediaPipe et OpenCV). Copie-le où tu veux et lance `gazefocus.exe`.
 pip install pytest
 python -m pytest
 ```
+
+## Licence
+
+MIT, voir [LICENSE](LICENSE).
