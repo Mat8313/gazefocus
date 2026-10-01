@@ -67,6 +67,7 @@ class Engine(threading.Thread):
         self.drift = DriftMonitor()
         self.pacer = Pacer()
         self._unsaved = 0
+        self._session_locked = False
         self._apply_reload()
 
     # --- commandes appelées depuis le thread de l'icône ---
@@ -135,20 +136,30 @@ class Engine(threading.Thread):
         winfocus.user32.RegisterHotKey(
             None, HOTKEY_ID, win32con.MOD_CONTROL | win32con.MOD_ALT, ord("G")
         )
-        self.overlay = Overlay()
+        self.overlay = Overlay({winfocus.WM_WTSSESSION_CHANGE: self._on_session_change})
+        winfocus.watch_session(self.overlay.hwnd)
         try:
             self._loop()
         except Exception as error:
             log.exception("Le moteur s'est arrêté")
             self._set_state(ERROR, f"{type(error).__name__}: {error}")
         finally:
+            winfocus.unwatch_session(self.overlay.hwnd)
             self.overlay.close()
             winfocus.user32.UnregisterHotKey(None, HOTKEY_ID)
             self._close_tracker()
             self._save_model()
 
+    def _on_session_change(self, hwnd, message, event, lparam):
+        """Appelé par Windows (via _pump_messages) au verrouillage et au déverrouillage."""
+        if event == winfocus.WTS_SESSION_LOCK:
+            self._session_locked = True
+        elif event == winfocus.WTS_SESSION_UNLOCK:
+            self._session_locked = False
+        return 0
+
     def _loop(self):
-        locked = False
+        locked = probe_locked = False
         last_slow_check = retry_at = 0.0
         while not self._quit.is_set():
             started = time.monotonic()
@@ -160,9 +171,12 @@ class Engine(threading.Thread):
 
             if started - last_slow_check >= SLOW_CHECK_INTERVAL:
                 last_slow_check = started
-                locked = winfocus.session_locked()
+                probe_locked = winfocus.session_locked()
                 self._refresh_monitors()
             names = [m.name for m in self.monitors]
+            if (self._session_locked or probe_locked) != locked:
+                locked = not locked
+                log.info("session %s", "verrouillée" if locked else "déverrouillée")
 
             # Avec un seul écran, il n'y a rien à faire sauf en mode fenêtres.
             single = len(names) < 2 and not self.config.same_screen

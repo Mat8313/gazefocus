@@ -15,12 +15,14 @@ class Overlay:
     Doit être créée et utilisée dans un thread qui traite ses messages Windows.
     """
 
-    def __init__(self):
+    def __init__(self, handlers=None):
+        """handlers : {message Windows: fonction}, pour les messages que le
+        propriétaire veut recevoir par cette fenêtre (c'est la seule de l'app)."""
         self._shown = None
         self._brush = None
         window_class = win32gui.WNDCLASS()
         window_class.lpszClassName = CLASS_NAME
-        window_class.lpfnWndProc = {win32con.WM_PAINT: self._paint}
+        window_class.lpfnWndProc = {win32con.WM_PAINT: self._paint, **(handlers or {})}
         window_class.hInstance = win32api.GetModuleHandle(None)
         win32gui.RegisterClass(window_class)
         style = (win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT | win32con.WS_EX_TOPMOST

@@ -61,8 +61,27 @@ class Monitor:
         return int(self.left + uv[0] * self.width), int(self.top + uv[1] * self.height)
 
 
+WM_WTSSESSION_CHANGE = 0x02B1
+WTS_SESSION_LOCK, WTS_SESSION_UNLOCK = 7, 8
+
+
+def watch_session(hwnd):
+    """Demande à Windows de prévenir `hwnd` à chaque verrouillage et déverrouillage.
+
+    La fenêtre reçoit alors WM_WTSSESSION_CHANGE, avec WTS_SESSION_LOCK ou
+    WTS_SESSION_UNLOCK en wParam. C'est le seul signal fiable : sonder l'état
+    donne des réponses intermittentes sur l'écran de verrouillage.
+    """
+    ctypes.windll.wtsapi32.WTSRegisterSessionNotification(wintypes.HWND(hwnd), 0)
+
+
+def unwatch_session(hwnd):
+    ctypes.windll.wtsapi32.WTSUnRegisterSessionNotification(wintypes.HWND(hwnd))
+
+
 def session_locked() -> bool:
-    """Vrai quand la session est verrouillée (le bureau d'entrée est inaccessible)."""
+    """Sondage de secours, en complément de watch_session : vrai quand le bureau
+    d'entrée est inaccessible. Peut répondre faux alors que la session est verrouillée."""
     desktop = user32.OpenInputDesktop(0, False, 0x0100)  # DESKTOP_SWITCHDESKTOP
     if not desktop:
         return True
