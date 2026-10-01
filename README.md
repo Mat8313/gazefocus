@@ -2,6 +2,11 @@
 
 [![Tests](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml/badge.svg)](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml)
 
+*Keyboard focus follows the screen you look at, on Windows. The app runs in the
+notification area, works fully offline from your webcam, and its interface is in
+English or French depending on your Windows language. The rest of this page is
+in French.*
+
 Le focus clavier suit l'écran que tu regardes, sous Windows. Tourne la tête vers
 ton autre moniteur et tape : la dernière fenêtre utilisée sur cet écran a déjà
 le focus, sans clic.
@@ -32,9 +37,15 @@ avertissement au premier lancement : « Informations complémentaires », puis
 
 ## Utilisation
 
-Au premier lancement, la calibration démarre toute seule. Sur chaque écran,
-appuie sur Espace puis suis des yeux le point qui longe les bords et traverse
-le milieu, pendant 14 secondes. Bouge la tête comme tu le fais d'habitude.
+Au premier lancement, la calibration démarre toute seule, en deux étapes :
+
+1. Assis comme d'habitude : sur chaque écran, appuie sur Espace puis suis des
+   yeux le point qui longe les bords et traverse le milieu, pendant 14 secondes.
+2. Recule ta chaise d'environ 25 cm et recommence. Cette étape apprend à l'app
+   comment la distance change les angles ; la touche S permet de la passer.
+
+Chaque disposition d'écrans (portable seul, portable + écran externe...) garde
+sa propre calibration, reprise automatiquement quand tu rebranches.
 
 Menu de l'icône (clic droit) :
 
@@ -102,7 +113,8 @@ attache à la release (`.github/workflows/release.yml`).
    régression ridge par écran en tire le point regardé ; l'écran choisi est
    celui dans lequel ce point tombe, avec une marge en faveur de l'écran actuel
    pour éviter le ping-pong. Le poids des yeux par rapport à la tête est donc
-   appris pour chaque personne.
+   appris pour chaque personne. Des termes « angle × distance » compensent le
+   recul ou l'avancée de la chaise.
 3. `calibration.py` fournit les échantillons de départ (environ 150 par
    écran) ; ensuite chaque clic en ajoute un, parce qu'on regarde là où on
    clique. Les 200 derniers clics par écran sont gardés, les plus récents
@@ -114,9 +126,11 @@ attache à la release (`.github/workflows/release.yml`).
 6. `engine.py` fait tourner le tout dans un thread, `tray.py` gère l'icône,
    `settings_ui.py` la fenêtre de réglages.
 
-L'app se met en veille quand la session est verrouillée, réessaie toutes les
-5 secondes si la caméra est indisponible, et demande une calibration quand un
-nouvel écran est branché.
+L'app se met en veille quand la session est verrouillée ou qu'il n'y a qu'un
+seul écran, et réessaie toutes les 5 secondes si la caméra est indisponible.
+Elle traite 20 images par seconde quand ton regard bouge et 5 quand il est
+posé. Si l'erreur mesurée sur tes 20 derniers clics dépasse un quart d'écran,
+une notification te propose de recalibrer.
 
 ## Limites
 

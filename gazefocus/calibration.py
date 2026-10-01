@@ -7,6 +7,7 @@ import numpy as np
 import win32gui
 
 from .gaze import MIN_CALIBRATED
+from .i18n import t
 from .winfocus import focus_window
 
 TITLE = "gazefocus - calibration"
@@ -18,6 +19,8 @@ DURATION = 14.0
 # Le regard suit le point avec un léger retard : on associe chaque pose à la
 # position que le point avait un instant plus tôt.
 LATENCY = 0.15
+KEY_ESCAPE, KEY_SPACE = 27, 32
+CANCELLED, SKIPPED = "cancelled", "skipped"
 
 _LENGTHS = [math.dist(a, b) for a, b in zip(PATH, PATH[1:])]
 
@@ -27,8 +30,8 @@ def path_point(progress: float):
     remaining = min(max(progress, 0.0), 1.0) * sum(_LENGTHS)
     for (a, b), length in zip(zip(PATH, PATH[1:]), _LENGTHS):
         if remaining <= length:
-            t = remaining / length
-            return a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+            t_ = remaining / length
+            return a[0] + (b[0] - a[0]) * t_, a[1] + (b[1] - a[1]) * t_
         remaining -= length
     return PATH[-1]
 
@@ -58,15 +61,22 @@ def _draw(monitor, uv, lines):
     return cv2.waitKey(1) & 0xFF
 
 
-def _record_monitor(tracker, monitor, label, advice):
-    """Renvoie les échantillons du parcours, ou None si annulé."""
+def _record(tracker, monitor, lines, can_skip=False):
+    """Renvoie les échantillons d'un parcours, ou CANCELLED / SKIPPED."""
+    # cv2.putText ne connaît que l'ASCII : pas d'accents dans ces textes.
+    start_hint = t("ESPACE pour commencer, Echap pour annuler",
+                   "SPACE to start, Esc to cancel")
+    if can_skip:
+        start_hint += t(", S pour passer cette etape", ", S to skip this step")
     while True:  # attente du départ
         pose = tracker.read()
-        status = "ESPACE pour commencer (Echap : annuler)" if pose else "Visage non detecte"
-        key = _draw(monitor, PATH[0], (label, advice, status))
-        if key == 27:
-            return None
-        if key == 32 and pose:
+        status = start_hint if pose else t("Visage non detecte", "No face detected")
+        key = _draw(monitor, PATH[0], (*lines, status))
+        if key == KEY_ESCAPE:
+            return CANCELLED
+        if can_skip and key in (ord("s"), ord("S")):
+            return SKIPPED
+        if key == KEY_SPACE and pose:
             break
 
     samples, start = [], time.monotonic()
@@ -75,27 +85,45 @@ def _record_monitor(tracker, monitor, label, advice):
         if pose:
             uv = path_point((elapsed - LATENCY) / DURATION)
             samples.append({"uv": list(uv), "raw": list(pose)})
-        if _draw(monitor, path_point(elapsed / DURATION), ()) == 27:
-            return None
-    return samples
+        if _draw(monitor, path_point(elapsed / DURATION), ()) == KEY_ESCAPE:
+            return CANCELLED
+    return samples if len(samples) >= MIN_CALIBRATED else CANCELLED
 
 
 def run(tracker, monitors, model) -> bool:
-    """Calibre tous les écrans. Le modèle n'est modifié que si tout est terminé."""
-    advice = (
-        "Suis le point des yeux, en bougeant la tete naturellement"
+    """Calibre tous les écrans. Le modèle n'est modifié que si tout est terminé.
+
+    Deux passes : à ta place habituelle, puis en reculant, pour que le modèle
+    apprenne comment la distance change les angles. La seconde est facultative.
+    """
+    follow = (
+        t("Suis le point des yeux, en bougeant la tete naturellement",
+          "Follow the dot with your eyes, moving your head naturally")
         if model.use_eyes else
-        "Suis le point en tournant la tete vers lui"
+        t("Suis le point en tournant la tete vers lui",
+          "Follow the dot by turning your head towards it")
     )
-    results = {}
+    passes = (
+        (t("Installe-toi comme d'habitude", "Sit as you normally do"), False),
+        (t("Maintenant recule ta chaise d'environ 25 cm",
+           "Now move your chair back about 25 cm (10 in)"), True),
+    )
+    results = {monitor.name: [] for monitor in monitors}
     try:
-        for index, monitor in enumerate(monitors, 1):
-            _show_on(monitor)
-            label = f"Ecran {index}/{len(monitors)}"
-            samples = _record_monitor(tracker, monitor, label, advice)
-            if samples is None or len(samples) < MIN_CALIBRATED:
-                return False
-            results[monitor.name] = samples
+        for step, (posture, can_skip) in enumerate(passes, 1):
+            for index, monitor in enumerate(monitors, 1):
+                _show_on(monitor)
+                label = t(f"Etape {step}/2 - ecran {index}/{len(monitors)}",
+                          f"Step {step}/2 - screen {index}/{len(monitors)}")
+                samples = _record(tracker, monitor, (label, posture, follow), can_skip)
+                if samples == CANCELLED:
+                    return False
+                if samples == SKIPPED:
+                    break
+                results[monitor.name] += samples
+            else:
+                continue
+            break
     finally:
         cv2.destroyAllWindows()
         cv2.waitKey(1)

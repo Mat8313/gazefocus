@@ -11,6 +11,7 @@ import cv2
 import mediapipe as mp
 
 from .config import DATA_DIR
+from .i18n import t
 from .smoothing import OneEuroFilter
 
 MODEL_URL = (
@@ -65,7 +66,8 @@ class HeadTracker:
         if not self.cap.isOpened():
             self.cap = cv2.VideoCapture(camera, cv2.CAP_DSHOW)
         if not self.cap.isOpened():
-            raise CameraError(f"Impossible d'ouvrir la caméra {camera}")
+            raise CameraError(t(f"Impossible d'ouvrir la caméra {camera}",
+                                f"Cannot open camera {camera}"))
         # En 720p, un iris couvre deux fois plus de pixels qu'en 480p. Si la
         # caméra ne le propose pas, elle garde sa résolution la plus proche.
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -94,11 +96,15 @@ class HeadTracker:
         """
         ok, frame = self.cap.read()
         if not ok:
-            raise CameraError("La caméra ne fournit plus d'image")
+            raise CameraError(t("La caméra ne fournit plus d'image",
+                                "The camera stopped sending frames"))
         # Quand une autre app tient la caméra, Windows livre des images noires.
         self._black = 0 if frame.any() else self._black + 1
         if self._black >= BLACK_FRAMES_LIMIT:
-            raise CameraError("Image noire : la caméra est sans doute utilisée par une autre application")
+            raise CameraError(t(
+                "Image noire : la caméra est sans doute utilisée par une autre application",
+                "Black frames: the camera is probably in use by another app",
+            ))
         image = mp.Image(
             image_format=mp.ImageFormat.SRGB,
             data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),

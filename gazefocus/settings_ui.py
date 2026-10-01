@@ -5,20 +5,28 @@ from tkinter import ttk
 
 from . import config as config_module
 from .config import Config
+from .i18n import t
 
 _open = threading.Lock()
 
 DELAYS = (
-    ("dwell", "Temps de fixation avant bascule (s)", 0.1, 2.0),
-    ("typing_cooldown", "Garder le focus après une frappe (s)", 0.0, 15.0),
-    ("mouse_cooldown", "Garder le focus après la souris (s)", 0.0, 10.0),
+    ("dwell", t("Temps de fixation avant bascule (s)", "Dwell time before switching (s)"), 0.1, 2.0),
+    ("typing_cooldown", t("Garder le focus après une frappe (s)",
+                          "Keep focus after a keystroke (s)"), 0.0, 15.0),
+    ("mouse_cooldown", t("Garder le focus après la souris (s)",
+                         "Keep focus after mouse use (s)"), 0.0, 10.0),
 )
 OPTIONS = (
-    ("learn_from_clicks", "Affiner la calibration à chaque clic"),
-    ("move_cursor", "Amener le curseur sur la fenêtre choisie"),
-    ("show_highlight", "Entourer la fenêtre regardée (vert : active, orange : en attente)"),
-    ("use_eyes", "Tenir compte des yeux, pas seulement de la tête (recalibrer après un changement)"),
-    ("same_screen", "Basculer aussi entre fenêtres d'un même écran (expérimental)"),
+    ("learn_from_clicks", t("Affiner la calibration à chaque clic",
+                            "Refine the calibration with every click")),
+    ("move_cursor", t("Amener le curseur sur la fenêtre choisie",
+                      "Move the pointer to the focused window")),
+    ("show_highlight", t("Entourer la fenêtre regardée (vert : active, orange : en attente)",
+                         "Outline the window you look at (green: focused, orange: pending)")),
+    ("use_eyes", t("Tenir compte des yeux, pas seulement de la tête (recalibrer après un changement)",
+                   "Use the eyes, not only the head (recalibrate after changing this)")),
+    ("same_screen", t("Basculer aussi entre fenêtres d'un même écran (expérimental)",
+                      "Also switch between windows on the same screen (experimental)")),
 )
 
 
@@ -32,14 +40,15 @@ def _run(current, on_save):
     # Tout objet Tk doit naître et mourir dans ce thread.
     try:
         root = tk.Tk()
-        root.title("gazefocus - Réglages")
+        root.title(t("gazefocus - Réglages", "gazefocus - Settings"))
         root.resizable(False, False)
         root.attributes("-topmost", True)
         frame = ttk.Frame(root, padding=16)
         frame.grid()
 
         camera = tk.IntVar(value=current.camera)
-        ttk.Label(frame, text="Caméra (0 = première)").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text=t("Caméra (0 = première)", "Camera (0 = first)")).grid(
+            row=0, column=0, sticky="w", pady=4)
         ttk.Spinbox(frame, from_=0, to=9, width=6, textvariable=camera).grid(row=0, column=1)
 
         delays = {}
@@ -58,8 +67,10 @@ def _run(current, on_save):
             row += 1
 
         excluded = tk.StringVar(value=", ".join(current.excluded))
-        ttk.Label(frame, text="Applications où le focus ne bouge jamais (ex. vlc.exe, teams.exe)").grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=(10, 2))
+        ttk.Label(frame, text=t(
+            "Applications où le focus ne bouge jamais (ex. vlc.exe, teams.exe)",
+            "Apps where focus never moves on its own (e.g. vlc.exe, teams.exe)",
+        )).grid(row=row, column=0, columnspan=2, sticky="w", pady=(10, 2))
         ttk.Entry(frame, textvariable=excluded).grid(row=row + 1, column=0, columnspan=2, sticky="ew")
 
         def save():
@@ -78,8 +89,9 @@ def _run(current, on_save):
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=row + 2, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(buttons, text="Annuler", command=root.destroy).grid(row=0, column=0, padx=4)
-        ttk.Button(buttons, text="Enregistrer", command=save).grid(row=0, column=1)
+        ttk.Button(buttons, text=t("Annuler", "Cancel"), command=root.destroy).grid(
+            row=0, column=0, padx=4)
+        ttk.Button(buttons, text=t("Enregistrer", "Save"), command=save).grid(row=0, column=1)
         root.mainloop()
     finally:
         _open.release()

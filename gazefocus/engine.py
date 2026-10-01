@@ -1,6 +1,8 @@
 """Thread d'arrière-plan : caméra, décision et bascule de focus."""
+import statistics
 import threading
 import time
+from collections import deque
 
 import win32api
 import win32con
@@ -8,19 +10,29 @@ import win32gui
 
 from . import calibration, overlay, winfocus
 from .config import WINDOW_MIN_DWELL
-from .overlay import Overlay
 from .decision import SwitchDecider
-from .gaze import GazeModel
+from .gaze import GazeModel, profile_key
+from .i18n import t
+from .overlay import Overlay
 from .tracker import HeadTracker
 
 HOTKEY_ID = 1
-FRAME_INTERVAL = 1 / 20     # compromis entre réactivité et charge processeur
+ACTIVE_INTERVAL = 1 / 20    # quand le regard bouge
+RESTING_INTERVAL = 1 / 5    # quand il est posé : quatre fois moins de calcul
+REST_AFTER = 2.0            # secondes sans mouvement avant de ralentir
+# Mouvement minimal pour repasser en cadence rapide : degrés pour la tête,
+# largeurs d'œil pour les iris. Au-dessus du tremblement résiduel du filtre.
+MOTION_HEAD, MOTION_EYES = 1.5, 0.03
 SLOW_CHECK_INTERVAL = 1.0   # écrans branchés, session verrouillée
 CAMERA_RETRY_INTERVAL = 5.0
 SAVE_EVERY = 20             # échantillons appris entre deux sauvegardes
+# Dérive : si l'erreur médiane des 20 derniers clics dépasse un quart d'écran,
+# la calibration ne correspond plus à ta position.
+DRIFT_WINDOW, DRIFT_THRESHOLD = 20, 0.25
 
-ACTIVE, PAUSED, CALIBRATING, NEEDS_CALIBRATION, UNAVAILABLE, ERROR = (
-    "active", "paused", "calibrating", "needs_calibration", "unavailable", "error"
+ACTIVE, PAUSED, CALIBRATING, NEEDS_CALIBRATION, SINGLE_SCREEN, UNAVAILABLE, ERROR = (
+    "active", "paused", "calibrating", "needs_calibration", "single_screen",
+    "unavailable", "error",
 )
 
 
@@ -42,13 +54,23 @@ def _pump_messages() -> bool:
             win32gui.DispatchMessage(message)
 
 
+def _moved(pose, reference) -> bool:
+    if pose is None or reference is None:
+        return pose is not reference
+    return (
+        max(abs(pose[i] - reference[i]) for i in (0, 1)) > MOTION_HEAD
+        or max(abs(pose[i] - reference[i]) for i in (2, 3)) > MOTION_EYES
+    )
+
+
 class Engine(threading.Thread):
     """Piloté depuis l'icône de la zone de notification via les méthodes publiques."""
 
-    def __init__(self, config, on_state=None):
+    def __init__(self, config, on_state=None, on_notice=None):
         super().__init__(daemon=True)
         self.config = config
         self.on_state = on_state or (lambda state, detail="": None)
+        self.on_notice = on_notice or (lambda message: None)
         self.state = PAUSED
         self.paused = False
         self._calibrate = threading.Event()
@@ -57,10 +79,13 @@ class Engine(threading.Thread):
         self._reload.set()
 
         self.tracker = None
-        self.model = GazeModel.load(config.use_eyes)
+        self.model = GazeModel(use_eyes=config.use_eyes)
         self.monitors = []
         self.inputs = None
         self._unsaved = 0
+        self._click_errors = deque(maxlen=DRIFT_WINDOW)
+        self._reference_pose = None
+        self._last_motion = 0.0
 
     # --- commandes appelées depuis le thread de l'icône ---
 
@@ -91,6 +116,11 @@ class Engine(threading.Thread):
             self.tracker.close()
             self.tracker = None
 
+    def _save_model(self):
+        if self._unsaved:
+            self.model.save()
+            self._unsaved = 0
+
     def _apply_reload(self):
         config = self.config
         if self.tracker and self.tracker.camera != config.camera:
@@ -99,6 +129,16 @@ class Engine(threading.Thread):
         self.model.invalidate()
         self.screen_decider = SwitchDecider(config.switching())
         self.window_decider = SwitchDecider(config.switching(WINDOW_MIN_DWELL))
+
+    def _refresh_monitors(self):
+        """Relu régulièrement : chaque disposition d'écrans a sa calibration."""
+        self.monitors = winfocus.list_monitors()
+        key = profile_key(self.monitors)
+        if key != self.model.profile:
+            self._save_model()
+            names = [m.name for m in self.monitors]
+            self.model = GazeModel.load(self.config.use_eyes, key, names)
+            self._click_errors.clear()
 
     def run(self):
         # Le raccourci doit être enregistré dans le thread qui lit ses messages.
@@ -114,8 +154,7 @@ class Engine(threading.Thread):
             self.overlay.close()
             winfocus.user32.UnregisterHotKey(None, HOTKEY_ID)
             self._close_tracker()
-            if self._unsaved:
-                self.model.save()
+            self._save_model()
 
     def _loop(self):
         locked = False
@@ -131,14 +170,17 @@ class Engine(threading.Thread):
             if started - last_slow_check >= SLOW_CHECK_INTERVAL:
                 last_slow_check = started
                 locked = winfocus.session_locked()
-                # Relu régulièrement : un écran peut être branché à tout moment.
-                self.monitors = winfocus.list_monitors()
+                self._refresh_monitors()
             names = [m.name for m in self.monitors]
 
-            if (self.paused or locked) and not self._calibrate.is_set():
-                # En pause ou session verrouillée, on libère la caméra.
+            # Avec un seul écran, il n'y a rien à faire sauf en mode fenêtres.
+            single = len(names) < 2 and not self.config.same_screen
+            if (self.paused or locked or single) and not self._calibrate.is_set():
+                # Au repos, on libère la caméra.
                 self._close_tracker()
-                if self.state != NEEDS_CALIBRATION:
+                if single and not self.paused:
+                    self._set_state(SINGLE_SCREEN)
+                elif self.state != NEEDS_CALIBRATION:
                     self._set_state(PAUSED)
                 time.sleep(0.2)
                 continue
@@ -161,6 +203,7 @@ class Engine(threading.Thread):
                         continue
                     if done:
                         self.paused = False
+                        self._click_errors.clear()
                     self._apply_reload()
                     self.inputs = winfocus.InputMonitor(time.monotonic())
                     continue
@@ -176,7 +219,13 @@ class Engine(threading.Thread):
 
             self._set_state(ACTIVE)
             self._step(raw, names)
-            time.sleep(max(0.0, FRAME_INTERVAL - (time.monotonic() - started)))
+
+            now = time.monotonic()
+            if _moved(raw, self._reference_pose):
+                self._reference_pose, self._last_motion = raw, now
+            resting = now - self._last_motion > REST_AFTER
+            interval = RESTING_INTERVAL if resting else ACTIVE_INTERVAL
+            time.sleep(max(0.0, interval - (now - started)))
 
     def _step(self, raw, names):
         config, inputs, model = self.config, self.inputs, self.model
@@ -187,8 +236,8 @@ class Engine(threading.Thread):
         current = winfocus.monitor_of_window(foreground)
         target = model.classify(raw, names, current) if raw else None
 
-        if raw and inputs.clicked and config.learn_from_clicks:
-            self._learn_from_click(raw)
+        if raw and inputs.clicked:
+            self._on_click(raw)
 
         if foreground and winfocus.process_name(foreground) in config.excluded:
             # App exclue au premier plan (jeu, visio...) : on ne touche à rien.
@@ -223,14 +272,28 @@ class Engine(threading.Thread):
         else:
             self.overlay.hide()
 
-    def _learn_from_click(self, raw):
+    def _on_click(self, raw):
+        """Un clic dit où tu regardes : on mesure l'erreur, puis on apprend."""
         cursor = win32api.GetCursorPos()
         monitor = next((m for m in self.monitors if m.contains(cursor)), None)
-        if monitor and self.model.learn(monitor.name, monitor.to_uv(cursor), raw):
+        if monitor is None:
+            return
+        uv = monitor.to_uv(cursor)
+        error = self.model.click_error(monitor.name, uv, raw)
+        if error is None:
+            return
+        self._click_errors.append(error)
+        if (len(self._click_errors) == DRIFT_WINDOW
+                and statistics.median(self._click_errors) > DRIFT_THRESHOLD):
+            self._click_errors.clear()  # prochain avertissement dans 20 clics au plus tôt
+            self.on_notice(t(
+                "La précision a baissé. As-tu bougé ? Recalibre depuis le menu.",
+                "Accuracy has dropped. Did you move? Recalibrate from the menu.",
+            ))
+        if self.config.learn_from_clicks and self.model.learn(monitor.name, uv, raw):
             self._unsaved += 1
             if self._unsaved >= SAVE_EVERY:
-                self.model.save()
-                self._unsaved = 0
+                self._save_model()
 
     def _window_looked_at(self, raw, monitor_name):
         uv = self.model.locate(raw, monitor_name)

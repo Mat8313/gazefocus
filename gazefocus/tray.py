@@ -3,22 +3,26 @@ import pystray
 from PIL import Image, ImageDraw
 
 from . import autostart, engine as eng, settings_ui
+from .i18n import t
 
 COLORS = {
     eng.ACTIVE: (80, 220, 120),
     eng.PAUSED: (150, 150, 150),
+    eng.SINGLE_SCREEN: (150, 150, 150),
     eng.CALIBRATING: (90, 160, 255),
     eng.NEEDS_CALIBRATION: (255, 180, 60),
     eng.UNAVAILABLE: (255, 180, 60),
     eng.ERROR: (235, 80, 80),
 }
 LABELS = {
-    eng.ACTIVE: "actif",
-    eng.PAUSED: "en pause",
-    eng.CALIBRATING: "calibration en cours",
-    eng.NEEDS_CALIBRATION: "calibration nécessaire",
-    eng.UNAVAILABLE: "caméra indisponible, nouvel essai en cours",
-    eng.ERROR: "erreur",
+    eng.ACTIVE: t("actif", "active"),
+    eng.PAUSED: t("en pause", "paused"),
+    eng.SINGLE_SCREEN: t("un seul écran, rien à faire", "single screen, nothing to do"),
+    eng.CALIBRATING: t("calibration en cours", "calibrating"),
+    eng.NEEDS_CALIBRATION: t("calibration nécessaire", "calibration needed"),
+    eng.UNAVAILABLE: t("caméra indisponible, nouvel essai en cours",
+                       "camera unavailable, retrying"),
+    eng.ERROR: t("erreur", "error"),
 }
 
 
@@ -40,9 +44,13 @@ def run(config):
         if state in (eng.ERROR, eng.UNAVAILABLE):
             icon.notify(detail or LABELS[state], "gazefocus")
         elif state == eng.NEEDS_CALIBRATION:
-            icon.notify("Calibration annulée. Relance-la depuis le menu.", "gazefocus")
+            icon.notify(t("Calibration annulée. Relance-la depuis le menu.",
+                          "Calibration cancelled. Start it again from the menu."), "gazefocus")
 
-    engine = eng.Engine(config, on_state)
+    def on_notice(message):
+        icon.notify(message, "gazefocus")
+
+    engine = eng.Engine(config, on_state, on_notice)
 
     def toggle_pause(icon, item):
         engine.toggle_pause()
@@ -63,20 +71,21 @@ def run(config):
 
     menu = pystray.Menu(
         pystray.MenuItem(
-            lambda item: "Reprendre" if engine.paused else "Pause  (Ctrl+Alt+G)",
+            lambda item: (t("Reprendre", "Resume") if engine.paused
+                          else t("Pause  (Ctrl+Alt+G)", "Pause  (Ctrl+Alt+G)")),
             toggle_pause,
             default=True,
         ),
-        pystray.MenuItem("Calibrer les écrans", calibrate),
-        pystray.MenuItem("Réglages…", open_settings),
+        pystray.MenuItem(t("Calibrer les écrans", "Calibrate screens"), calibrate),
+        pystray.MenuItem(t("Réglages…", "Settings…"), open_settings),
         pystray.MenuItem(
-            "Lancer au démarrage de Windows",
+            t("Lancer au démarrage de Windows", "Start with Windows"),
             toggle_autostart,
             checked=lambda item: autostart.enabled(),
             enabled=lambda item: autostart.available(),
         ),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quitter", quit_app),
+        pystray.MenuItem(t("Quitter", "Quit"), quit_app),
     )
     icon = pystray.Icon("gazefocus", _icon_image(eng.PAUSED), "gazefocus", menu)
 

@@ -7,7 +7,7 @@ import numpy as np
 from .config import DATA_DIR
 
 CALIBRATION_PATH = DATA_DIR / "calibration.json"
-VERSION = 3
+VERSION = 4
 MIN_CALIBRATED = 30
 MAX_LEARNED = 200
 # Un clic est une mesure exacte du point regardé : il pèse plus qu'un
@@ -15,12 +15,12 @@ MAX_LEARNED = 200
 CLICK_WEIGHT = 2.0
 
 # Pose : yaw, pitch, œil x, œil y, tête x, tête y, tête z.
-HEAD, EYES, POSITION = (0, 1), (2, 3), (4, 5, 6)
-# Mise à l'échelle pour que chaque axe varie d'environ 1 en usage normal.
-SCALES = np.array([10.0, 10.0, 0.1, 0.1, 5.0, 5.0, 5.0])
-# Pénalité de la régression : forte sur la position de la tête, qui bouge à
-# peine pendant la calibration. Son effet ne s'apprend qu'avec beaucoup de clics.
-RIDGE = np.array([1e-3, 1e-3, 1e-2, 1e-2, 30.0, 30.0, 30.0])
+HEAD, EYES, SIDEWAYS, DEPTH = (0, 1), (2, 3), (4, 5), 6
+# Mise à l'échelle pour que chaque variable varie d'environ 1 en usage normal.
+SCALES = np.array([10.0, 10.0, 0.1, 0.1, 5.0, 5.0, 10.0])
+# Pénalités de la régression ridge. Elles sont fortes là où la calibration
+# apporte peu d'information : un effet ne s'apprend que si les données le montrent.
+RIDGE_HEAD, RIDGE_EYES, RIDGE_POSITION, RIDGE_DISTANCE = 1e-3, 1e-2, 30.0, 1.0
 
 # Tête tournée à plus de 30° de tout ce qui a été vu : tu regardes ailleurs.
 MAX_HEAD_DISTANCE = 30.0
@@ -34,32 +34,50 @@ STICKINESS = 0.12
 MAX_CLICK_ERROR = 0.5
 
 
+def profile_key(monitors) -> str:
+    """Identifie une disposition d'écrans : chacune a sa propre calibration."""
+    return "|".join(sorted(
+        f"{m.name}@{m.width}x{m.height}{m.left:+d}{m.top:+d}" for m in monitors
+    ))
+
+
 def _outside(uv) -> float:
     """Distance de (u, v) au carré [0, 1]², en fractions d'écran ; 0 dedans."""
     return math.hypot(*(max(-c, 0.0, c - 1.0) for c in uv))
 
 
+def _read_profiles(profile="", names=()) -> dict:
+    try:
+        data = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if data.get("version") == VERSION:
+        return data["profiles"]
+    if data.get("version") == 3 and set(data["monitors"]) == set(names):
+        # Ancien format, sans profils : la calibration devient celle de la
+        # disposition actuelle si elle concerne bien ces écrans.
+        return {profile: data["monitors"]}
+    return {}
+
+
 class GazeModel:
     """Échantillons par écran : {"uv": position sur l'écran (0..1), "raw": pose}."""
 
-    def __init__(self, monitors=None, use_eyes=True):
+    def __init__(self, monitors=None, use_eyes=True, profile=""):
         self.monitors = monitors or {}
         self.use_eyes = use_eyes
+        self.profile = profile
         self._fits = {}
 
     @classmethod
-    def load(cls, use_eyes=True):
-        try:
-            data = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return cls(use_eyes=use_eyes)
-        if data.get("version") != VERSION:
-            return cls(use_eyes=use_eyes)
-        return cls(data["monitors"], use_eyes)
+    def load(cls, use_eyes=True, profile="", names=()):
+        return cls(_read_profiles(profile, names).get(profile), use_eyes, profile)
 
     def save(self):
+        profiles = _read_profiles()
+        profiles[self.profile] = self.monitors
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        data = {"version": VERSION, "monitors": self.monitors}
+        data = {"version": VERSION, "profiles": profiles}
         CALIBRATION_PATH.write_text(json.dumps(data), encoding="utf-8")
 
     def invalidate(self):
@@ -75,8 +93,24 @@ class GazeModel:
             for name in names
         )
 
-    def _columns(self):
-        return list(HEAD + (EYES if self.use_eyes else ()) + POSITION)
+    def _design(self, raws, reference_depth):
+        """Variables de la régression pour des poses (n, 7).
+
+        Reculer rétrécit les écrans dans le champ de vision : un même angle
+        correspond à un point plus éloigné. C'est un produit angle × distance,
+        qu'un modèle linéaire ne peut apprendre que si on le lui fournit.
+        """
+        angular = list(HEAD + (EYES if self.use_eyes else ()))
+        angles = raws[:, angular] / SCALES[angular]
+        sideways = raws[:, list(SIDEWAYS)] / SCALES[list(SIDEWAYS)]
+        depth = (raws[:, [DEPTH]] - reference_depth) / SCALES[DEPTH]
+        design = np.hstack([angles, sideways, depth, angles * depth, np.ones((len(raws), 1))])
+        penalty = np.concatenate([
+            [RIDGE_HEAD] * 2, [RIDGE_EYES] * (len(angular) - 2),
+            [RIDGE_POSITION] * 3, [RIDGE_DISTANCE] * len(angular),
+            [0.0],  # pas de pénalité sur la constante
+        ])
+        return design, penalty
 
     def _fit(self, name):
         """Régression ridge pondérée pose -> (u, v), recalculée après chaque clic."""
@@ -88,24 +122,24 @@ class GazeModel:
             recency = 0.5 + 0.5 * np.arange(1, len(learned) + 1) / max(len(learned), 1)
             weights = np.concatenate([np.ones(len(calibrated)), CLICK_WEIGHT * recency])
 
-            columns = self._columns()
-            design = np.hstack([raws[:, columns] / SCALES[columns], np.ones((len(raws), 1))])
+            reference_depth = float(np.mean(raws[: len(calibrated), DEPTH]))
+            design, penalty = self._design(raws, reference_depth)
             weighted = design * weights[:, None]
-            penalty = np.diag(np.append(RIDGE[columns], 0.0))  # pas de pénalité sur la constante
-            coefficients = np.linalg.solve(design.T @ weighted + penalty, weighted.T @ targets)
-            self._fits[name] = coefficients, raws[:, list(HEAD)]
+            coefficients = np.linalg.solve(
+                design.T @ weighted + np.diag(penalty), weighted.T @ targets
+            )
+            self._fits[name] = coefficients, raws[:, list(HEAD)], reference_depth
         return self._fits[name]
 
     def locate(self, raw, name):
         """Point regardé sur l'écran `name`, en (u, v) ; hors de [0, 1] = à côté."""
-        coefficients, _ = self._fit(name)
-        columns = self._columns()
-        features = np.append(np.asarray(raw)[columns] / SCALES[columns], 1.0)
-        u, v = features @ coefficients
+        coefficients, _, reference_depth = self._fit(name)
+        design, _ = self._design(np.asarray(raw, dtype=float)[None, :], reference_depth)
+        u, v = (design @ coefficients)[0]
         return float(u), float(v)
 
     def _head_distance(self, raw, name) -> float:
-        _, heads = self._fit(name)
+        heads = self._fit(name)[1]
         return float(np.min(np.linalg.norm(heads - np.asarray(raw)[list(HEAD)], axis=1)))
 
     def classify(self, raw, names, current=None):
@@ -129,11 +163,16 @@ class GazeModel:
                 best, best_score = name, score
         return best
 
+    def click_error(self, name, uv, raw):
+        """Écart entre le point prédit et le clic, en fractions d'écran."""
+        if name not in self.monitors:
+            return None
+        return math.dist(self.locate(raw, name), uv)
+
     def learn(self, name, uv, raw) -> bool:
         """Ajoute un échantillon tiré d'un clic : on regarde là où on clique."""
-        if name not in self.monitors:
-            return False
-        if math.dist(self.locate(raw, name), uv) > MAX_CLICK_ERROR:
+        error = self.click_error(name, uv, raw)
+        if error is None or error > MAX_CLICK_ERROR:
             return False
         learned = self.monitors[name]["learned"]
         learned.append({"uv": list(uv), "raw": list(raw)})
