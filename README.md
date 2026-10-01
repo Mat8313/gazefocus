@@ -4,7 +4,7 @@
 
 [![gazefocus demo](docs/demo.gif)](docs/demo.mp4)
 
-*Click the animation for the video with sound (23 seconds, captions in French).*
+*Click the animation for the video with sound (23 seconds).*
 
 **English** · [Français](README.fr.md)
 

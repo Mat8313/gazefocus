@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml/badge.svg)](https://github.com/Mat8313/gazefocus/actions/workflows/tests.yml)
 
-[![Démonstration de gazefocus](docs/demo.gif)](docs/demo.mp4)
+[![Démonstration de gazefocus](docs/demo.fr.gif)](docs/demo.fr.mp4)
 
 *Clique sur l'animation pour la vidéo avec le son (23 secondes).*
 
