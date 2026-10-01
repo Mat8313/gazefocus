@@ -18,7 +18,7 @@ centre de chaque écran, regarde-le et appuie sur Espace.
 
 Menu de l'icône (clic droit) :
 
-- **Pause / Reprendre** : aussi par double-clic sur l'icône ou `Ctrl+Alt+G`.
+- **Pause / Reprendre** : aussi par clic gauche sur l'icône ou `Ctrl+Alt+G`.
   En pause, la caméra est libérée.
 - **Calibrer les écrans** : à refaire si tu déplaces un écran ou la webcam.
 - **Lancer au démarrage de Windows** : disponible dans la version `.exe`.
