@@ -177,7 +177,7 @@ class Engine(threading.Thread):
         target = model.classify(raw, names, current) if raw else None
 
         if raw and inputs.clicked and config.learn_from_clicks:
-            self._learn_from_click(raw, names)
+            self._learn_from_click(raw)
 
         switch_to = self.screen_decider.update(target, current, now, since_mouse, since_key)
         window = None
@@ -194,10 +194,10 @@ class Engine(threading.Thread):
             winfocus.move_cursor_to(window)
             inputs.sync_cursor()
 
-    def _learn_from_click(self, raw, names):
+    def _learn_from_click(self, raw):
         cursor = win32api.GetCursorPos()
         monitor = next((m for m in self.monitors if m.contains(cursor)), None)
-        if monitor and self.model.learn(monitor.name, monitor.to_uv(cursor), raw, names):
+        if monitor and self.model.learn(monitor.name, monitor.to_uv(cursor), raw):
             self._unsaved += 1
             if self._unsaved >= SAVE_EVERY:
                 self.model.save()
@@ -205,8 +205,6 @@ class Engine(threading.Thread):
 
     def _window_looked_at(self, raw, monitor_name):
         uv = self.model.locate(raw, monitor_name)
-        if uv is None:
-            return None
         monitor = next(m for m in self.monitors if m.name == monitor_name)
         point = monitor.from_uv(uv)
         return winfocus.window_at(point) if monitor.contains(point) else None

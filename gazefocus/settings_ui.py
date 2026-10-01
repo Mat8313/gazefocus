@@ -16,7 +16,7 @@ DELAYS = (
 OPTIONS = (
     ("learn_from_clicks", "Affiner la calibration à chaque clic"),
     ("move_cursor", "Amener le curseur sur la fenêtre choisie"),
-    ("use_eyes", "Tenir compte des yeux, pas seulement de la tête (expérimental)"),
+    ("use_eyes", "Tenir compte des yeux, pas seulement de la tête (recalibrer après un changement)"),
     ("same_screen", "Basculer aussi entre fenêtres d'un même écran (expérimental)"),
 )
 

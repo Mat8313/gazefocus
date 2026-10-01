@@ -24,9 +24,9 @@ avertissement au premier lancement : « Informations complémentaires », puis
 
 ## Utilisation
 
-Au premier lancement, la calibration démarre toute seule : un point s'affiche
-cinq fois par écran (au centre puis sur chaque bord). Regarde-le et appuie sur
-Espace à chaque fois.
+Au premier lancement, la calibration démarre toute seule. Sur chaque écran,
+appuie sur Espace puis suis des yeux le point qui longe les bords et traverse
+le milieu, pendant 14 secondes. Bouge la tête comme tu le fais d'habitude.
 
 Menu de l'icône (clic droit) :
 
@@ -50,7 +50,7 @@ calibration à refaire ou caméra indisponible, rouge erreur.
 | Focus après la souris | 1,5 s | La souris garde la main |
 | Affiner à chaque clic | oui | Chaque clic sert d'échantillon de calibration |
 | Amener le curseur | non | Le pointeur va sur la fenêtre qui reçoit le focus |
-| Tenir compte des yeux | non | Expérimental : ajoute la position des iris |
+| Tenir compte des yeux | oui | Ajoute la position des iris ; recalibrer après un changement |
 | Fenêtres d'un même écran | non | Expérimental : bascule entre fenêtres voisines |
 
 Les réglages sont dans `%APPDATA%\gazefocus\config.json`.
@@ -78,14 +78,18 @@ MediaPipe).
 
 ## Comment ça marche
 
-1. `tracker.py` : MediaPipe estime l'orientation de la tête (yaw, pitch) et le
-   décalage des iris dans les yeux.
-2. `gaze.py` : chaque écran a des échantillons « pose -> position ». La pose
-   courante est rattachée à l'écran de l'échantillon le plus proche, avec une
-   marge en faveur de l'écran actuel pour éviter le ping-pong. Un ajustement
-   affine par écran estime le point regardé.
-3. `calibration.py` fournit les échantillons de départ ; ensuite chaque clic en
-   ajoute un, parce qu'on regarde là où on clique.
+1. `tracker.py` : MediaPipe estime l'orientation et la position de la tête,
+   ainsi que le décalage des iris dans les yeux. Un filtre « One Euro »
+   (`smoothing.py`) lisse le tout : fort au repos, léger en mouvement.
+2. `gaze.py` : chaque écran a des échantillons « pose -> position ». Une
+   régression ridge par écran en tire le point regardé ; l'écran choisi est
+   celui dans lequel ce point tombe, avec une marge en faveur de l'écran actuel
+   pour éviter le ping-pong. Le poids des yeux par rapport à la tête est donc
+   appris pour chaque personne.
+3. `calibration.py` fournit les échantillons de départ (environ 150 par
+   écran) ; ensuite chaque clic en ajoute un, parce qu'on regarde là où on
+   clique. Les 200 derniers clics par écran sont gardés, les plus récents
+   pesant le plus.
 4. `decision.py` : la bascule n'a lieu qu'après un regard soutenu, jamais
    pendant que tu tapes ou que tu utilises la souris.
 5. `winfocus.py` : la fenêtre la plus haute dans le z-order de l'écran visé
@@ -99,8 +103,8 @@ nouvel écran est branché.
 
 ## Limites
 
-- Par défaut, seule l'orientation de la tête compte : il faut la tourner un
-  peu. Le suivi des yeux est approximatif avec une webcam ordinaire.
+- Le suivi des yeux reste approximatif avec une webcam ordinaire : il dépend
+  de l'éclairage, et les lunettes à reflets le dégradent.
 - La bascule entre fenêtres d'un même écran demande une précision que la
   webcam n'offre pas toujours ; elle convient à deux fenêtres côte à côte.
 - Les fenêtres lancées en administrateur ne peuvent pas recevoir le focus

@@ -1,4 +1,4 @@
-"""Modèle du regard : de la pose mesurée à l'écran, puis au point regardé."""
+"""Modèle du regard : de la pose mesurée au point regardé, puis à l'écran."""
 import json
 import math
 
@@ -7,30 +7,48 @@ import numpy as np
 from .config import DATA_DIR
 
 CALIBRATION_PATH = DATA_DIR / "calibration.json"
-VERSION = 2
-# Au-delà de cette distance (en degrés) de tout échantillon, on considère que tu
-# ne regardes aucun écran (téléphone, plafond, fenêtre...).
-MAX_DISTANCE = 30.0
-# L'écran actuel paraît 25 % plus proche : il faut tourner la tête un peu plus
-# loin pour partir que pour revenir, ce qui évite le ping-pong.
-STICKINESS = 0.75
-# Degrés de rotation du regard par unité de décalage d'iris (ordre de grandeur
-# anatomique : l'iris se déplace d'environ 0,4 largeur d'œil pour 90°).
-EYE_GAIN = 120.0
-MAX_LEARNED = 40
-MIN_CALIBRATED = 3
+VERSION = 3
+MIN_CALIBRATED = 30
+MAX_LEARNED = 200
+# Un clic est une mesure exacte du point regardé : il pèse plus qu'un
+# échantillon de calibration, et les clics récents plus que les anciens.
+CLICK_WEIGHT = 2.0
+
+# Pose : yaw, pitch, œil x, œil y, tête x, tête y, tête z.
+HEAD, EYES, POSITION = (0, 1), (2, 3), (4, 5, 6)
+# Mise à l'échelle pour que chaque axe varie d'environ 1 en usage normal.
+SCALES = np.array([10.0, 10.0, 0.1, 0.1, 5.0, 5.0, 5.0])
+# Pénalité de la régression : forte sur la position de la tête, qui bouge à
+# peine pendant la calibration. Son effet ne s'apprend qu'avec beaucoup de clics.
+RIDGE = np.array([1e-3, 1e-3, 1e-2, 1e-2, 30.0, 30.0, 30.0])
+
+# Tête tournée à plus de 30° de tout ce qui a été vu : tu regardes ailleurs.
+MAX_HEAD_DISTANCE = 30.0
+# Point prédit à plus d'une demi-largeur hors de tout écran : aucun écran.
+MAX_OUTSIDE = 0.5
+# L'écran actuel est agrandi de 12 % : il faut regarder nettement chez le
+# voisin pour basculer, ce qui évite le ping-pong sur la frontière.
+STICKINESS = 0.12
+# Un clic dont la position contredit la prédiction de plus d'un demi-écran est
+# un clic à l'aveugle : on ne l'apprend pas.
+MAX_CLICK_ERROR = 0.5
+
+
+def _outside(uv) -> float:
+    """Distance de (u, v) au carré [0, 1]², en fractions d'écran ; 0 dedans."""
+    return math.hypot(*(max(-c, 0.0, c - 1.0) for c in uv))
 
 
 class GazeModel:
     """Échantillons par écran : {"uv": position sur l'écran (0..1), "raw": pose}."""
 
-    def __init__(self, monitors=None, use_eyes=False):
+    def __init__(self, monitors=None, use_eyes=True):
         self.monitors = monitors or {}
         self.use_eyes = use_eyes
         self._fits = {}
 
     @classmethod
-    def load(cls, use_eyes=False):
+    def load(cls, use_eyes=True):
         try:
             data = json.loads(CALIBRATION_PATH.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -57,63 +75,68 @@ class GazeModel:
             for name in names
         )
 
-    def feature(self, raw):
-        """Direction du regard (horizontale, verticale) en degrés."""
-        yaw, pitch, eye = raw
-        return (yaw + EYE_GAIN * eye if self.use_eyes else yaw, pitch)
+    def _columns(self):
+        return list(HEAD + (EYES if self.use_eyes else ()) + POSITION)
 
-    def _samples(self, name):
-        entry = self.monitors[name]
-        return entry["calibrated"] + entry["learned"]
+    def _fit(self, name):
+        """Régression ridge pondérée pose -> (u, v), recalculée après chaque clic."""
+        if name not in self._fits:
+            entry = self.monitors[name]
+            calibrated, learned = entry["calibrated"], entry["learned"]
+            raws = np.array([s["raw"] for s in calibrated + learned])
+            targets = np.array([s["uv"] for s in calibrated + learned])
+            recency = 0.5 + 0.5 * np.arange(1, len(learned) + 1) / max(len(learned), 1)
+            weights = np.concatenate([np.ones(len(calibrated)), CLICK_WEIGHT * recency])
 
-    def distance(self, raw, name) -> float:
-        feature = self.feature(raw)
-        return min(math.dist(feature, self.feature(s["raw"])) for s in self._samples(name))
+            columns = self._columns()
+            design = np.hstack([raws[:, columns] / SCALES[columns], np.ones((len(raws), 1))])
+            weighted = design * weights[:, None]
+            penalty = np.diag(np.append(RIDGE[columns], 0.0))  # pas de pénalité sur la constante
+            coefficients = np.linalg.solve(design.T @ weighted + penalty, weighted.T @ targets)
+            self._fits[name] = coefficients, raws[:, list(HEAD)]
+        return self._fits[name]
+
+    def locate(self, raw, name):
+        """Point regardé sur l'écran `name`, en (u, v) ; hors de [0, 1] = à côté."""
+        coefficients, _ = self._fit(name)
+        columns = self._columns()
+        features = np.append(np.asarray(raw)[columns] / SCALES[columns], 1.0)
+        u, v = features @ coefficients
+        return float(u), float(v)
+
+    def _head_distance(self, raw, name) -> float:
+        _, heads = self._fit(name)
+        return float(np.min(np.linalg.norm(heads - np.asarray(raw)[list(HEAD)], axis=1)))
 
     def classify(self, raw, names, current=None):
-        """Écran regardé parmi `names`, ou None si la pose est loin de tous."""
+        """Écran regardé parmi `names`, ou None si le regard est loin de tous."""
         best, best_score = None, math.inf
         for name in names:
             if name not in self.monitors:
                 continue
-            distance = self.distance(raw, name)
-            if distance > MAX_DISTANCE:
+            if self._head_distance(raw, name) > MAX_HEAD_DISTANCE:
                 continue
-            score = distance * (STICKINESS if name == current else 1.0)
+            uv = self.locate(raw, name)
+            outside = _outside(uv)
+            if outside > MAX_OUTSIDE:
+                continue
+            score = max(outside - (STICKINESS if name == current else 0.0), 0.0)
+            # À égalité (point dans deux écrans à la fois), le plus centré gagne.
+            score += 1e-3 * math.dist(uv, (0.5, 0.5))
+            if name == current:
+                score -= 1e-3
             if score < best_score:
                 best, best_score = name, score
         return best
 
-    def learn(self, name, uv, raw, names) -> bool:
-        """Ajoute un échantillon tiré d'un clic : on regarde là où on clique.
-
-        Refusé si la pose désigne nettement un autre écran (clic à l'aveugle).
-        """
+    def learn(self, name, uv, raw) -> bool:
+        """Ajoute un échantillon tiré d'un clic : on regarde là où on clique."""
         if name not in self.monitors:
             return False
-        here = self.distance(raw, name)
-        nearest = min(self.distance(raw, n) for n in names if n in self.monitors)
-        if here > MAX_DISTANCE or here > max(1.5 * nearest, nearest + 5.0):
+        if math.dist(self.locate(raw, name), uv) > MAX_CLICK_ERROR:
             return False
         learned = self.monitors[name]["learned"]
         learned.append({"uv": list(uv), "raw": list(raw)})
         del learned[:-MAX_LEARNED]
         self._fits.pop(name, None)
         return True
-
-    def locate(self, raw, name):
-        """Point regardé sur l'écran `name`, en coordonnées (u, v) de 0 à 1."""
-        if name not in self._fits:
-            samples = self._samples(name)
-            features = np.array([[*self.feature(s["raw"]), 1.0] for s in samples])
-            targets = np.array([s["uv"] for s in samples])
-            if len(samples) < 3 or np.linalg.matrix_rank(features) < 3:
-                self._fits[name] = None
-            else:
-                # Ajustement affine pose -> position, par moindres carrés.
-                self._fits[name] = np.linalg.lstsq(features, targets, rcond=None)[0]
-        fit = self._fits[name]
-        if fit is None:
-            return None
-        u, v = np.array([*self.feature(raw), 1.0]) @ fit
-        return float(u), float(v)

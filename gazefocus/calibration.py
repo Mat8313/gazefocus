@@ -1,17 +1,36 @@
-"""Écran de calibration : suivre un point sur chaque écran."""
-import statistics
+"""Écran de calibration : suivre du regard un point qui parcourt chaque écran."""
+import math
+import time
 
 import cv2
 import numpy as np
 import win32gui
 
+from .gaze import MIN_CALIBRATED
 from .winfocus import focus_window
 
 TITLE = "gazefocus - calibration"
-SAMPLES = 20
-# Le centre, puis les quatre bords : ce sont les bords qui fixent les
-# frontières entre écrans voisins.
-POINTS = ((0.5, 0.5), (0.06, 0.5), (0.94, 0.5), (0.5, 0.08), (0.5, 0.92))
+# Le point longe les bords (ce sont eux qui fixent les frontières entre écrans)
+# puis traverse le milieu.
+PATH = ((0.5, 0.5), (0.06, 0.5), (0.06, 0.08), (0.94, 0.08), (0.94, 0.92),
+        (0.06, 0.92), (0.06, 0.5), (0.94, 0.5), (0.5, 0.5))
+DURATION = 14.0
+# Le regard suit le point avec un léger retard : on associe chaque pose à la
+# position que le point avait un instant plus tôt.
+LATENCY = 0.15
+
+_LENGTHS = [math.dist(a, b) for a, b in zip(PATH, PATH[1:])]
+
+
+def path_point(progress: float):
+    """Position sur le parcours pour une progression de 0 à 1, à vitesse constante."""
+    remaining = min(max(progress, 0.0), 1.0) * sum(_LENGTHS)
+    for (a, b), length in zip(zip(PATH, PATH[1:]), _LENGTHS):
+        if remaining <= length:
+            t = remaining / length
+            return a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+        remaining -= length
+    return PATH[-1]
 
 
 def _show_on(monitor):
@@ -26,48 +45,56 @@ def _show_on(monitor):
         focus_window(hwnd)
 
 
-def _record_point(tracker, monitor, uv, label):
-    """Renvoie la pose médiane en regardant le point, ou None si annulé."""
+def _draw(monitor, uv, lines):
     width, height = monitor.width, monitor.height
+    canvas = np.zeros((height, width, 3), np.uint8)
     center = (int(uv[0] * width), int(uv[1] * height))
-    samples, recording = [], False
-    while len(samples) < SAMPLES:
+    cv2.circle(canvas, center, 18, (80, 220, 120), -1)
+    cv2.circle(canvas, center, 4, (20, 20, 20), -1)
+    for index, text in enumerate(lines):
+        cv2.putText(canvas, text, (width // 2 - 430, height // 3 + 45 * index),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.imshow(TITLE, canvas)
+    return cv2.waitKey(1) & 0xFF
+
+
+def _record_monitor(tracker, monitor, label, advice):
+    """Renvoie les échantillons du parcours, ou None si annulé."""
+    while True:  # attente du départ
         pose = tracker.read()
-        canvas = np.zeros((height, width, 3), np.uint8)
-        cv2.circle(canvas, center, 18, (80, 220, 120), -1)
-        cv2.circle(canvas, center, 4, (20, 20, 20), -1)
-        if pose is None:
-            message, recording, samples = "Visage non detecte", False, []
-        elif recording:
-            samples.append(pose)
-            message = "Ne bouge pas..."
-        else:
-            message = "Regarde le point puis appuie sur ESPACE (Echap : annuler)"
-        for line, text in enumerate((label, message)):
-            cv2.putText(canvas, text, (width // 2 - 420, height // 3 + 45 * line),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.imshow(TITLE, canvas)
-        key = cv2.waitKey(1) & 0xFF
+        status = "ESPACE pour commencer (Echap : annuler)" if pose else "Visage non detecte"
+        key = _draw(monitor, PATH[0], (label, advice, status))
         if key == 27:
             return None
-        if key == 32 and pose is not None:
-            recording = True
-    return [statistics.median(axis) for axis in zip(*samples)]
+        if key == 32 and pose:
+            break
+
+    samples, start = [], time.monotonic()
+    while (elapsed := time.monotonic() - start) < DURATION:
+        pose = tracker.read()
+        if pose:
+            uv = path_point((elapsed - LATENCY) / DURATION)
+            samples.append({"uv": list(uv), "raw": list(pose)})
+        if _draw(monitor, path_point(elapsed / DURATION), ()) == 27:
+            return None
+    return samples
 
 
 def run(tracker, monitors, model) -> bool:
     """Calibre tous les écrans. Le modèle n'est modifié que si tout est terminé."""
+    advice = (
+        "Suis le point des yeux, en bougeant la tete naturellement"
+        if model.use_eyes else
+        "Suis le point en tournant la tete vers lui"
+    )
     results = {}
     try:
-        for screen, monitor in enumerate(monitors, 1):
+        for index, monitor in enumerate(monitors, 1):
             _show_on(monitor)
-            samples = []
-            for index, uv in enumerate(POINTS, 1):
-                label = f"Ecran {screen}/{len(monitors)} - point {index}/{len(POINTS)}"
-                raw = _record_point(tracker, monitor, uv, label)
-                if raw is None:
-                    return False
-                samples.append({"uv": list(uv), "raw": raw})
+            label = f"Ecran {index}/{len(monitors)}"
+            samples = _record_monitor(tracker, monitor, label, advice)
+            if samples is None or len(samples) < MIN_CALIBRATED:
+                return False
             results[monitor.name] = samples
     finally:
         cv2.destroyAllWindows()

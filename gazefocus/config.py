@@ -20,7 +20,7 @@ class Config:
     typing_cooldown: float = 3.0
     learn_from_clicks: bool = True
     move_cursor: bool = False
-    use_eyes: bool = False
+    use_eyes: bool = True
     same_screen: bool = False
 
     def switching(self, min_dwell: float = 0.0) -> Settings:
