@@ -4,7 +4,7 @@ import os
 import pystray
 from PIL import Image, ImageDraw
 
-from . import autostart, engine as eng, settings_ui
+from . import PROJECT_URL, __version__, autostart, engine as eng, settings_ui
 from .i18n import t
 from .log import LOG_PATH
 
@@ -42,7 +42,7 @@ def _icon_image(state) -> Image.Image:
 def run(config):
     def on_state(state, detail=""):
         icon.icon = _icon_image(state)
-        icon.title = f"gazefocus : {LABELS[state]}"
+        icon.title = f"gazefocus {__version__} : {LABELS[state]}"
         icon.update_menu()
         if state in (eng.ERROR, eng.UNAVAILABLE):
             icon.notify(detail or LABELS[state], "gazefocus")
@@ -66,6 +66,9 @@ def run(config):
 
     def open_log(icon, item):
         os.startfile(LOG_PATH)
+
+    def open_project(icon, item):
+        os.startfile(PROJECT_URL)
 
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
@@ -91,6 +94,10 @@ def run(config):
             enabled=lambda item: autostart.available(),
         ),
         pystray.MenuItem(t("Ouvrir le journal", "Open the log"), open_log),
+        pystray.MenuItem(
+            t(f"gazefocus {__version__} sur GitHub", f"gazefocus {__version__} on GitHub"),
+            open_project,
+        ),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem(t("Quitter", "Quit"), quit_app),
     )

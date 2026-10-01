@@ -55,6 +55,7 @@ Icon menu (right click):
 - **Start with Windows**: available in the `.exe` version.
 - **Open the log**: errors and state changes, useful when reporting a bug. No
   window title or application name is ever written to it.
+- **gazefocus on GitHub**: shows the installed version and opens this page.
 - **Quit**
 
 Iris colour: green active, grey paused, blue calibrating, orange calibration
@@ -99,7 +100,7 @@ The result is the `dist\gazefocus` folder (about 210 MB, mostly OpenCV and
 MediaPipe). For the installer, with [Inno Setup](https://jrsoftware.org/isinfo.php):
 
 ```
-iscc /DAppVersion=0.5.0 installer.iss
+iscc /DAppVersion=1.0.0 installer.iss
 ```
 
 On GitHub, pushing a `vX.Y.Z` tag builds the zip and the installer and attaches

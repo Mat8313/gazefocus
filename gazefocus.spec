@@ -23,5 +23,6 @@ a.datas = [
 ]
 
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, exclude_binaries=True, name="gazefocus", console=False)
+exe = EXE(pyz, a.scripts, exclude_binaries=True, name="gazefocus", console=False,
+          icon="gazefocus.ico")
 COLLECT(exe, a.binaries, a.datas, name="gazefocus")

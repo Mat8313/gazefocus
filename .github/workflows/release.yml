@@ -22,6 +22,12 @@ jobs:
       - run: pip install -r requirements.txt pytest pyinstaller
       - run: python -m pytest -q
 
+      - name: Check the tag matches the app version
+        if: github.ref_type == 'tag'
+        run: |
+          $version = python -c "import re, pathlib; print(re.search(r'__version__ = .(.+?).$', pathlib.Path('gazefocus/__init__.py').read_text(encoding='utf-8'), re.M).group(1))"
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { Write-Error "Tag $env:GITHUB_REF_NAME but __version__ is $version"; exit 1 }
+
       - name: Build exe
         run: .\build.ps1
 

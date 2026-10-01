@@ -57,6 +57,7 @@ Menu de l'icône (clic droit) :
 - **Lancer au démarrage de Windows** : disponible dans la version `.exe`.
 - **Ouvrir le journal** : les erreurs et changements d'état, utiles pour
   signaler un bug. Aucun titre de fenêtre ni nom d'application n'y est écrit.
+- **gazefocus sur GitHub** : affiche la version installée et ouvre cette page.
 - **Quitter**
 
 Couleur de l'iris : vert actif, gris en pause, bleu en calibration, orange
@@ -101,7 +102,7 @@ Le résultat est le dossier `dist\gazefocus` (environ 210 Mo, surtout OpenCV et
 MediaPipe). Pour l'installeur, avec [Inno Setup](https://jrsoftware.org/isinfo.php) :
 
 ```
-iscc /DAppVersion=0.4.0 installer.iss
+iscc /DAppVersion=1.0.0 installer.iss
 ```
 
 Sur GitHub, pousser un tag `vX.Y.Z` construit le zip et l'installeur et les

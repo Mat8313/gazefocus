@@ -1,5 +1,5 @@
 ; Installeur Inno Setup. Construire l'exe d'abord (build.ps1), puis :
-;   iscc /DAppVersion=0.4.0 installer.iss
+;   iscc /DAppVersion=1.0.0 installer.iss
 ; Le résultat est dist\gazefocus-setup.exe.
 
 #ifndef AppVersion
@@ -17,6 +17,7 @@ PrivilegesRequired=lowest
 DefaultDirName={localappdata}\Programs\gazefocus
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\gazefocus.exe
+SetupIconFile=gazefocus.ico
 OutputDir=dist
 OutputBaseFilename=gazefocus-setup
 Compression=lzma2
