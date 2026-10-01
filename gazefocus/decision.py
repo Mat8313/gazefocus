@@ -6,7 +6,7 @@ from dataclasses import dataclass
 class Settings:
     dwell: float = 0.3            # secondes à fixer un écran avant de basculer
     mouse_cooldown: float = 1.5   # la souris garde la main pendant ce délai
-    typing_cooldown: float = 0.7  # on ne vole jamais le focus en pleine frappe
+    typing_cooldown: float = 3.0  # laisse le temps de réfléchir entre deux mots
 
 
 class SwitchDecider:

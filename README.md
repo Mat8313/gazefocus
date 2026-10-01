@@ -39,7 +39,8 @@ python -m gazefocus
 ```
 
 Options : `--camera 1` pour une autre webcam, `--dwell 0.5` pour allonger le
-temps de fixation avant bascule.
+temps de fixation avant bascule, `--typing-cooldown 5` pour garder le focus plus
+longtemps après la dernière frappe (3 secondes par défaut).
 
 ## Construire l'exe
 
