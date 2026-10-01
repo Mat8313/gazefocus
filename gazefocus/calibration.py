@@ -5,8 +5,10 @@ import statistics
 
 import cv2
 import numpy as np
+import win32gui
 
 from .tracker import DATA_DIR
+from .winfocus import focus_window
 
 CALIBRATION_PATH = DATA_DIR / "calibration.json"
 SAMPLES = 30
@@ -53,6 +55,11 @@ def run(tracker, monitors) -> dict[str, tuple[float, float]] | None:
         cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
         cv2.moveWindow(title, monitor.left, monitor.top)
         cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.waitKey(1)
+        # Lancée depuis l'arrière-plan, la fenêtre n'aurait pas le clavier.
+        hwnd = win32gui.FindWindow(None, title)
+        if hwnd:
+            focus_window(hwnd)
 
         samples = []
         recording = False

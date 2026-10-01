@@ -20,6 +20,13 @@ def enable_dpi_awareness():
         user32.SetProcessDPIAware()
 
 
+def acquire_single_instance() -> bool:
+    """False si gazefocus tourne déjà (démarrage auto + lancement manuel)."""
+    global _instance_mutex
+    _instance_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "gazefocus-single-instance")
+    return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
 @dataclass(frozen=True)
 class Monitor:
     name: str
