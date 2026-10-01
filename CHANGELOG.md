@@ -2,12 +2,14 @@
 
 ## 1.0.0
 
-First stable version. No change in behaviour since 0.5.1; this release is about finish.
+First stable version. This release is about finish, plus one fix found through the new log file.
 
 - Application icon for the executable and the installer
 - Version number shown in the icon tooltip, the menu and the log
 - Menu entry that opens the project page
 - The release build now fails if the tag and the app version disagree
+- Fix: locking the session (Win+L) no longer stops the app; it pauses, releases
+  the camera and resumes on unlock
 
 ## 0.5.1
 

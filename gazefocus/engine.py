@@ -212,7 +212,16 @@ class Engine(threading.Thread):
                 continue
 
             self._set_state(ACTIVE)
-            self._step(raw, names)
+            try:
+                self._step(raw, names)
+            except win32gui.error as error:
+                # Écran de verrouillage ou invite d'élévation : Windows refuse
+                # alors de répondre (souris, fenêtres). Ce n'est pas une panne :
+                # on saute cette image et on revérifie le verrouillage tout de suite.
+                log.info("Windows a refusé un appel (%s), nouvelle vérification", error.funcname)
+                last_slow_check = 0.0
+                time.sleep(0.2)
+                continue
             now = time.monotonic()
             time.sleep(max(0.0, self.pacer.interval(raw, now) - (now - started)))
 

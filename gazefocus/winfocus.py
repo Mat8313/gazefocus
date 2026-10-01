@@ -67,6 +67,12 @@ def session_locked() -> bool:
     if not desktop:
         return True
     user32.CloseDesktop(desktop)
+    # Second signal, observé en pratique : sur l'écran de verrouillage, Windows
+    # refuse de donner la position de la souris (« Accès refusé »).
+    try:
+        win32api.GetCursorPos()
+    except win32api.error:
+        return True
     return False
 
 
