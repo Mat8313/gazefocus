@@ -24,23 +24,40 @@ avertissement au premier lancement : « Informations complémentaires », puis
 
 ## Utilisation
 
-Au premier lancement, la calibration démarre toute seule : un point s'affiche au
-centre de chaque écran, regarde-le et appuie sur Espace.
+Au premier lancement, la calibration démarre toute seule : un point s'affiche
+cinq fois par écran (au centre puis sur chaque bord). Regarde-le et appuie sur
+Espace à chaque fois.
 
 Menu de l'icône (clic droit) :
 
 - **Pause / Reprendre** : aussi par clic gauche sur l'icône ou `Ctrl+Alt+G`.
   En pause, la caméra est libérée.
 - **Calibrer les écrans** : à refaire si tu déplaces un écran ou la webcam.
+- **Réglages…** : voir ci-dessous.
 - **Lancer au démarrage de Windows** : disponible dans la version `.exe`.
 - **Quitter**
 
 Couleur de l'iris : vert actif, gris en pause, bleu en calibration, orange
-calibration à refaire, rouge erreur.
+calibration à refaire ou caméra indisponible, rouge erreur.
+
+### Réglages
+
+| Réglage | Défaut | Effet |
+| --- | --- | --- |
+| Caméra | 0 | Index de la webcam à utiliser |
+| Temps de fixation | 0,3 s | Durée à regarder un écran avant la bascule |
+| Focus après une frappe | 3 s | Pas de bascule tant que tu tapes |
+| Focus après la souris | 1,5 s | La souris garde la main |
+| Affiner à chaque clic | oui | Chaque clic sert d'échantillon de calibration |
+| Amener le curseur | non | Le pointeur va sur la fenêtre qui reçoit le focus |
+| Tenir compte des yeux | non | Expérimental : ajoute la position des iris |
+| Fenêtres d'un même écran | non | Expérimental : bascule entre fenêtres voisines |
+
+Les réglages sont dans `%APPDATA%\gazefocus\config.json`.
 
 ## Lancer depuis les sources
 
-Windows 10/11, Python 3.10 ou plus, une webcam, au moins deux écrans.
+Python 3.10 ou plus.
 
 ```
 python -m venv .venv
@@ -49,10 +66,6 @@ pip install -r requirements.txt
 python -m gazefocus
 ```
 
-Options : `--camera 1` pour une autre webcam, `--dwell 0.5` pour allonger le
-temps de fixation avant bascule, `--typing-cooldown 5` pour garder le focus plus
-longtemps après la dernière frappe (3 secondes par défaut).
-
 ## Construire l'exe
 
 ```
@@ -60,24 +73,36 @@ pip install pyinstaller
 .\build.ps1
 ```
 
-Le résultat est le dossier `dist\gazefocus` (environ 285 Mo, à cause de
-MediaPipe et OpenCV). Copie-le où tu veux et lance `gazefocus.exe`.
+Le résultat est le dossier `dist\gazefocus` (environ 210 Mo, surtout OpenCV et
+MediaPipe).
 
 ## Comment ça marche
 
-1. `tracker.py` : MediaPipe estime l'orientation de la tête (yaw, pitch).
-2. `calibration.py` : la pose est rattachée à l'écran calibré le plus proche,
-   avec une marge en faveur de l'écran actuel pour éviter le ping-pong.
-3. `decision.py` : la bascule n'a lieu qu'après un regard soutenu, jamais
+1. `tracker.py` : MediaPipe estime l'orientation de la tête (yaw, pitch) et le
+   décalage des iris dans les yeux.
+2. `gaze.py` : chaque écran a des échantillons « pose -> position ». La pose
+   courante est rattachée à l'écran de l'échantillon le plus proche, avec une
+   marge en faveur de l'écran actuel pour éviter le ping-pong. Un ajustement
+   affine par écran estime le point regardé.
+3. `calibration.py` fournit les échantillons de départ ; ensuite chaque clic en
+   ajoute un, parce qu'on regarde là où on clique.
+4. `decision.py` : la bascule n'a lieu qu'après un regard soutenu, jamais
    pendant que tu tapes ou que tu utilises la souris.
-4. `winfocus.py` : la fenêtre la plus haute dans le z-order de l'écran visé
+5. `winfocus.py` : la fenêtre la plus haute dans le z-order de l'écran visé
    reçoit le focus via l'API Win32.
-5. `engine.py` fait tourner le tout dans un thread, `tray.py` gère l'icône.
+6. `engine.py` fait tourner le tout dans un thread, `tray.py` gère l'icône,
+   `settings_ui.py` la fenêtre de réglages.
+
+L'app se met en veille quand la session est verrouillée, réessaie toutes les
+5 secondes si la caméra est indisponible, et demande une calibration quand un
+nouvel écran est branché.
 
 ## Limites
 
-- Suit l'orientation de la tête, pas les yeux : il faut tourner un peu la tête.
-- Bascule entre écrans seulement, pas entre fenêtres d'un même écran.
+- Par défaut, seule l'orientation de la tête compte : il faut la tourner un
+  peu. Le suivi des yeux est approximatif avec une webcam ordinaire.
+- La bascule entre fenêtres d'un même écran demande une précision que la
+  webcam n'offre pas toujours ; elle convient à deux fenêtres côte à côte.
 - Les fenêtres lancées en administrateur ne peuvent pas recevoir le focus
   depuis un processus normal.
 

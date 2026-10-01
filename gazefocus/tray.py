@@ -2,13 +2,14 @@
 import pystray
 from PIL import Image, ImageDraw
 
-from . import autostart, engine as eng
+from . import autostart, engine as eng, settings_ui
 
 COLORS = {
     eng.ACTIVE: (80, 220, 120),
     eng.PAUSED: (150, 150, 150),
     eng.CALIBRATING: (90, 160, 255),
     eng.NEEDS_CALIBRATION: (255, 180, 60),
+    eng.UNAVAILABLE: (255, 180, 60),
     eng.ERROR: (235, 80, 80),
 }
 LABELS = {
@@ -16,6 +17,7 @@ LABELS = {
     eng.PAUSED: "en pause",
     eng.CALIBRATING: "calibration en cours",
     eng.NEEDS_CALIBRATION: "calibration nécessaire",
+    eng.UNAVAILABLE: "caméra indisponible, nouvel essai en cours",
     eng.ERROR: "erreur",
 }
 
@@ -30,23 +32,26 @@ def _icon_image(state) -> Image.Image:
     return image
 
 
-def run(camera=0, settings=None):
+def run(config):
     def on_state(state, detail=""):
         icon.icon = _icon_image(state)
         icon.title = f"gazefocus : {LABELS[state]}"
         icon.update_menu()
-        if state == eng.ERROR:
-            icon.notify(detail or "Erreur inconnue", "gazefocus")
+        if state in (eng.ERROR, eng.UNAVAILABLE):
+            icon.notify(detail or LABELS[state], "gazefocus")
         elif state == eng.NEEDS_CALIBRATION:
             icon.notify("Calibration annulée. Relance-la depuis le menu.", "gazefocus")
 
-    engine = eng.Engine(camera, settings, on_state)
+    engine = eng.Engine(config, on_state)
 
     def toggle_pause(icon, item):
         engine.toggle_pause()
 
     def calibrate(icon, item):
         engine.request_calibration()
+
+    def open_settings(icon, item):
+        settings_ui.show(engine.config, engine.apply_config)
 
     def toggle_autostart(icon, item):
         autostart.set_enabled(not autostart.enabled())
@@ -63,6 +68,7 @@ def run(camera=0, settings=None):
             default=True,
         ),
         pystray.MenuItem("Calibrer les écrans", calibrate),
+        pystray.MenuItem("Réglages…", open_settings),
         pystray.MenuItem(
             "Lancer au démarrage de Windows",
             toggle_autostart,

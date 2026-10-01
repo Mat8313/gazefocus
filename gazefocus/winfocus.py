@@ -36,8 +36,30 @@ class Monitor:
     bottom: int
 
     @property
-    def center(self):
-        return (self.left + self.right) // 2, (self.top + self.bottom) // 2
+    def width(self):
+        return self.right - self.left
+
+    @property
+    def height(self):
+        return self.bottom - self.top
+
+    def contains(self, point) -> bool:
+        return self.left <= point[0] < self.right and self.top <= point[1] < self.bottom
+
+    def to_uv(self, point):
+        return (point[0] - self.left) / self.width, (point[1] - self.top) / self.height
+
+    def from_uv(self, uv):
+        return int(self.left + uv[0] * self.width), int(self.top + uv[1] * self.height)
+
+
+def session_locked() -> bool:
+    """Vrai quand la session est verrouillée (le bureau d'entrée est inaccessible)."""
+    desktop = user32.OpenInputDesktop(0, False, 0x0100)  # DESKTOP_SWITCHDESKTOP
+    if not desktop:
+        return True
+    user32.CloseDesktop(desktop)
+    return False
 
 
 def list_monitors() -> list[Monitor]:
@@ -95,6 +117,30 @@ def top_window_on(monitor_name: str):
     return found[0] if found else None
 
 
+def window_at(point, margin: float = 0.1):
+    """Fenêtre principale sous `point`, s'il tombe nettement à l'intérieur.
+
+    La marge écarte les bords, là où l'estimation du regard hésite entre deux
+    fenêtres voisines.
+    """
+    try:
+        hwnd = win32gui.WindowFromPoint(point)
+    except win32gui.error:
+        return None
+    root = user32.GetAncestor(hwnd, 2) if hwnd else 0  # GA_ROOT
+    if not root or not is_switchable(root):
+        return None
+    left, top, right, bottom = win32gui.GetWindowRect(root)
+    dx, dy = (right - left) * margin, (bottom - top) * margin
+    inside = left + dx <= point[0] <= right - dx and top + dy <= point[1] <= bottom - dy
+    return root if inside else None
+
+
+def move_cursor_to(hwnd):
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    user32.SetCursorPos((left + right) // 2, (top + bottom) // 2)
+
+
 def focus_window(hwnd) -> bool:
     """Donne le focus clavier à hwnd, sans clic synthétique."""
     foreground = win32gui.GetForegroundWindow()
@@ -125,6 +171,13 @@ class InputMonitor:
 
     def __init__(self, now: float):
         self.last_mouse = self.last_key = now - 60
+        self.clicked = False  # vrai pendant l'appel où le bouton gauche s'enfonce
+        self._left_down = False
+        self._cursor = win32api.GetCursorPos()
+        self._tick = self._input_tick()
+
+    def sync_cursor(self):
+        """À appeler après avoir déplacé le curseur nous-mêmes : ce n'est pas l'utilisateur."""
         self._cursor = win32api.GetCursorPos()
         self._tick = self._input_tick()
 
@@ -140,6 +193,9 @@ class InputMonitor:
             user32.GetAsyncKeyState(vk) & 0x8000
             for vk in (win32con.VK_LBUTTON, win32con.VK_RBUTTON, win32con.VK_MBUTTON)
         )
+        left_down = bool(user32.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000)
+        self.clicked = left_down and not self._left_down
+        self._left_down = left_down
         if cursor != self._cursor or buttons:
             self.last_mouse = now
         elif tick != self._tick:

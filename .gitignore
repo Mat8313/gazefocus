@@ -3,6 +3,6 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
-*.spec
 *.task
 calibration.json
+config.json
